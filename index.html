@@ -795,7 +795,9 @@ function bindUI() {
   $('btnClearAll').onclick = () => {
     if (state.landmarks.length === 0) return;
     if (confirm(`Delete all ${state.landmarks.length} landmarks?`)) {
-      state.landmarks = []; state.selectedId = null; state.eraserLastSweep = null;
+      state.landmarks = []; state.selectedId = null;
+      state.eraserLastSweep = null; state.traceLastBatch = null;
+      state.traceBatchCounter = 0;
       $('btnUndoErase').disabled = true;
       renderAll();
     }
@@ -810,6 +812,8 @@ function bindUI() {
   $('btnUndoErase').onclick = () => {
     if (state.eraserLastSweep && state.eraserLastSweep.length > 0) {
       undoLastErase();
+    } else if (state.traceLastBatch && state.traceLastBatch.length > 0) {
+      undoLastTrace();
     }
   };
 
@@ -1767,7 +1771,10 @@ function undoLastErase() {
   }
   const count = state.eraserLastSweep.length;
   state.eraserLastSweep = null;
-  $('btnUndoErase').disabled = true;
+  // Disable undo only if no other pending batch
+  if (!state.traceLastBatch || state.traceLastBatch.length === 0) {
+    $('btnUndoErase').disabled = true;
+  }
   setStatus(`Restored ${count} landmark${count === 1 ? '' : 's'} from eraser.`, 'ok');
   renderAll();
 }
@@ -1848,7 +1855,8 @@ function endTrace() {
     return;
   }
   state.traceLastBatch = state.tracePoints.slice();
-  state.traceLastSweep = state.traceLastBatch; // reuse undo button
+  // Note: don't touch state.eraserLastSweep — eraser and trace have
+  // independent undo states. The Undo button checks both.
   $('btnUndoErase').disabled = false;
   const count = state.tracePoints.length;
   setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all.`, 'warn');
@@ -1857,6 +1865,23 @@ function endTrace() {
   state.traceLastPoint = null;
   // Clear the preview path
   clearTracePreview();
+  renderAll();
+}
+
+function undoLastTrace() {
+  if (!state.traceLastBatch || state.traceLastBatch.length === 0) return;
+  // Remove all the trace points
+  const idsToRemove = new Set(state.traceLastBatch.map(l => l.id));
+  state.landmarks = state.landmarks.filter(l => !idsToRemove.has(l.id));
+  // Decrement counter back by the number removed
+  state.traceBatchCounter = Math.max(0, state.traceBatchCounter - state.traceLastBatch.length);
+  const count = state.traceLastBatch.length;
+  state.traceLastBatch = null;
+  // Disable undo if no more batches
+  if (!state.eraserLastSweep || state.eraserLastSweep.length === 0) {
+    $('btnUndoErase').disabled = true;
+  }
+  setStatus(`Removed ${count} trace point${count === 1 ? '' : 's'}.`, 'ok');
   renderAll();
 }
 
@@ -2461,6 +2486,9 @@ function onKey(e) {
   if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) {
     if (state.eraserLastSweep && state.eraserLastSweep.length > 0) {
       undoLastErase();
+      e.preventDefault();
+    } else if (state.traceLastBatch && state.traceLastBatch.length > 0) {
+      undoLastTrace();
       e.preventDefault();
     }
   }
