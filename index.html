@@ -145,6 +145,17 @@
     margin-left: 6px;
   }
   .tip .tip-dismiss:hover { color: #c8c8ce; }
+
+  .edge-status {
+    margin-top: 8px; padding: 6px 10px;
+    border-radius: 4px; font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    border: 1px solid #2a2a30;
+  }
+  .edge-status-idle    { background: #18181b; color: #6a6a72; }
+  .edge-status-computing { background: #3a2c10; color: #ffb454; border-color: #5a4520; }
+  .edge-status-ready   { background: #143a1f; color: #5fd178; border-color: #205a30; }
+  .edge-status-error   { background: #3a1018; color: #ff6b78; border-color: #5a2030; }
 </style>
 </head>
 <body>
@@ -257,6 +268,7 @@
           <button id="btnSnapAll" disabled title="Snap every landmark to its nearest detected edge">Snap all</button>
         </div>
         <label class="toggle-row" style="margin-top:6px"><input type="checkbox" id="showEdgeOverlay"> Show edge overlay</label>
+        <div id="edgeStatus" class="edge-status edge-status-idle">Edge map: not computed</div>
         <p class="help" style="margin-top:4px">Edge detection (Sobel) finds tissue boundaries in the image. New landmarks auto-snap to the nearest edge within the search radius. Use a smaller radius for fine structures, larger for fuzzy ones.</p>
       </div>
 
@@ -545,7 +557,12 @@ function bindUI() {
 
   // Edge snap
   $('snapEnabledCb').onchange = (e) => { state.snapEnabled = e.target.checked; };
-  $('snapRadiusSel').onchange = (e) => { state.snapRadius = parseInt(e.target.value) || 30; };
+  $('snapRadiusSel').onchange = (e) => {
+    state.snapRadius = parseInt(e.target.value) || 30;
+    if (state.edgeReady) {
+      setEdgeStatus('ready', `Edge map: ready · ${state.edgeW}×${state.edgeH}px · ${state.snapRadius}px radius`);
+    }
+  };
   $('btnComputeEdges').onclick = () => computeEdgeMap();
   $('btnSnapAll').onclick = () => snapAllLandmarks(true);
   $('showEdgeOverlay').onchange = (e) => {
@@ -958,6 +975,7 @@ function computeEdgeMap() {
 
   state.edgeComputing = true;
   setStatus('Computing edge map (Sobel)…', 'warn');
+  setEdgeStatus('computing', 'Edge map: computing…');
 
   return new Promise((resolve) => {
     // Use requestAnimationFrame to yield to UI, then run async
@@ -1038,11 +1056,13 @@ function computeEdgeMap() {
         state.edgeReady = true;
         state.edgeComputing = false;
         setStatus(`Edge map ready · ${W}×${H}px (${state.snapRadius}px snap radius)`, 'ok');
+        setEdgeStatus('ready', `Edge map: ready · ${W}×${H}px · ${state.snapRadius}px radius`);
         render();
         resolve(true);
       } catch (err) {
         state.edgeComputing = false;
         setStatus('Edge detection failed: ' + err.message, 'err');
+        setEdgeStatus('error', 'Edge map: error — ' + err.message);
         resolve(false);
       }
     }, 10);
@@ -1125,6 +1145,7 @@ function animateSnap(lm, tx, ty) {
 function snapAllLandmarks(animated) {
   if (!state.edgeReady) {
     setStatus('Edge map not ready — computing now…', 'warn');
+    setEdgeStatus('computing', 'Edge map: computing… (auto-snap requested)');
     computeEdgeMap().then(() => snapAllLandmarks(animated));
     return;
   }
@@ -1134,6 +1155,7 @@ function snapAllLandmarks(animated) {
     if (r.magnitude > 0) snapped++;
   }
   setStatus(`Snapped ${snapped}/${state.landmarks.length} landmarks to nearest edges.`, 'ok');
+  setEdgeStatus('ready', `Edge map: ready · ${state.edgeW}×${state.edgeH}px · ${state.snapRadius}px radius · last snap: ${snapped}/${state.landmarks.length}`);
 }
 
 // Render the edge map as a faint overlay (toggle-able)
@@ -1390,6 +1412,15 @@ function renderStatus() {
 
 function setStatus(msg, kind) {
   $('statusLeft').innerHTML = kind ? `<span class="${kind}">${msg}</span>` : msg;
+}
+
+// Persistent edge-map status indicator in the sidebar — does NOT get
+// wiped by render() calls the way the bottom status bar does.
+function setEdgeStatus(state, text) {
+  const el = $('edgeStatus');
+  if (!el) return;
+  el.className = 'edge-status edge-status-' + state;
+  el.textContent = text;
 }
 
 // =====================================================================
