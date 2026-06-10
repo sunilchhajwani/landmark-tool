@@ -53,6 +53,14 @@
   .toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c8c8ce; margin-bottom: 4px; cursor: pointer; }
   .toggle-row input { margin: 0; }
 
+  /* Legend row in Connection Style section */
+  .legend-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px; font-size: 11px; color: #c8c8ce; line-height: 1.4;
+  }
+  .legend-row svg { flex-shrink: 0; }
+  .legend-row strong { color: #f5f5f5; }
+
   /* Eraser mode active state */
   #btnEraser.active {
     background: #c44; border-color: #c44; color: white;
@@ -73,6 +81,23 @@
   #lmList .coords { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px; color: #8a8a92; }
   #lmList .del { background: none; border: none; color: #8a8a92; padding: 0 4px; cursor: pointer; font-size: 14px; }
   #lmList .del:hover { color: #ff8088; }
+
+  /* Distance display for selected landmark */
+  .lm-distances {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #2a2a30;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .lm-dist-line {
+    display: flex; gap: 4px; align-items: baseline;
+    color: #8a8a92; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .lm-dist-arrow { color: #5a5a62; }
+  .lm-dist-name { color: #5fb8ff; }
+  .lm-dist-name:hover { color: #8fcfff; text-decoration: underline; }
+  .lm-dist-val { color: #5fd178; margin-left: auto; }
 
   /* ---- Canvas area ---- */
   #stage-wrap { flex: 1; position: relative; overflow: hidden; background: #050507; }
@@ -344,6 +369,23 @@
         <ul id="lmList"></ul>
       </div>
 
+      <div class="section" id="topologyLegend" style="display:none">
+        <h2>Connection Style</h2>
+        <div class="legend-row">
+          <svg width="60" height="14"><path d="M 4 7 Q 18 2 30 7 T 56 7" stroke="#5fb8ff" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+          <span><strong>Smooth curve</strong> — wall/boundary tissue (passes through every point)</span>
+        </div>
+        <div class="legend-row">
+          <svg width="60" height="14"><line x1="4" y1="7" x2="56" y2="7" stroke="#5fd178" stroke-width="2"/></svg>
+          <span><strong>Straight line</strong> — flow tract, annulus, or rigid structure</span>
+        </div>
+        <div class="legend-row">
+          <svg width="60" height="14"><circle cx="30" cy="7" r="5" fill="#5f6fff" stroke="black" stroke-width="1"/></svg>
+          <span><strong>Free point</strong> — no connection, just a reference marker</span>
+        </div>
+        <p class="help" style="margin-top:6px">Click a landmark in the list to see its distance to connected neighbors. Calibration is needed for cm values.</p>
+      </div>
+
       <div class="section">
         <h2>Export</h2>
         <div class="btn-row">
@@ -453,6 +495,60 @@ const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5f
 //     in TTE PLAX stills. Drag to fit your specific image.
 const PRESET_PLAX_NORMAL = {
   description: 'Parasternal Long Axis, normal end-diastole approximation',
+  // groups defines topology: which points connect, in what order, with what
+  // connection style. Points are referenced by name. connection style is
+  // 'smooth' (Catmull-Rom curve through every point), 'straight' (line
+  // segments), or 'free' (no connection). closed: true means the last
+  // point connects back to the first.
+  groups: [
+    // LV cavity boundary — a closed smooth loop forming the inner wall
+    { style: 'smooth', closed: true, color: '#5fd178', members: [
+      'ao_root_posterior_wall',  // top-right of LV
+      'septum_basal',
+      'septum_mid',
+      'septum_apical',
+      'lv_apex',                 // bottom-left (narrow tip)
+      'posterior_wall_apical',
+      'posterior_wall_mid',
+      'posterior_wall_basal',    // bottom-right, back to start
+    ]},
+    // Mitral valve — annulus to leaflet tips (open shape, smooth)
+    { style: 'smooth', closed: false, color: '#5fb8ff', members: [
+      'mv_annulus_anterior',
+      'mv_anterior_leaflet_tip',
+      'mv_posterior_leaflet_tip',
+      'mv_annulus_posterior',
+    ]},
+    // Aortic root — closed smooth loop of the wall and cusps
+    { style: 'smooth', closed: true, color: '#ff7faa', members: [
+      'ao_root_anterior_wall',
+      'av_left_coronary_cusp',
+      'av_non_coronary_cusp',
+      'ao_root_posterior_wall',
+      'av_right_coronary_cusp',
+    ]},
+    // Left atrium boundary — closed smooth loop
+    { style: 'smooth', closed: true, color: '#c88aff', members: [
+      'la_anterior_wall',
+      'la_posterior_wall',
+    ]},
+    // RVOT — straight line (a flow tract, not a chamber)
+    { style: 'straight', closed: false, color: '#ffd45f', members: [
+      'rvot_anterior',
+      'rvot_center',
+    ]},
+    // Reference points — no connection (free)
+    { style: 'free', closed: false, color: '#ff9d5f', members: [
+      'descending_aorta',
+      'pericardium_apex',
+    ]},
+  ],
+  // Center / interior points (rendered as dots, not part of any boundary)
+  interior: [
+    'ao_root_center',   // inside aortic root
+    'lv_cavity_center', // inside LV cavity
+    'la_center',        // inside LA
+  ],
   landmarks: [
     // Aortic root complex
     { name: 'ao_root_center',         x_frac: 0.50, y_frac: 0.32, group: 'aortic',     color: '#ff7faa' },
@@ -878,6 +974,9 @@ function applyPreset(name, isReapply) {
   state.selectedId = null;
   $('btnReapplyPreset').disabled = false;
   $('btnSaveAsPreset').disabled = false;
+  // Show topology legend if the preset defines groups
+  const hasGroups = state.presets[name] && state.presets[name].groups;
+  $('topologyLegend').style.display = hasGroups ? 'block' : 'none';
   renderAll();
   setStatus(`Applied preset "${name}" — ${state.landmarks.length} landmarks placed. Drag any to adjust.`, 'ok');
   showPresetTip(name, state.landmarks.length);
@@ -889,6 +988,165 @@ function applyPreset(name, isReapply) {
       computeEdgeMap().then(() => snapAllLandmarks(true));
     }
   }
+}
+
+// =====================================================================
+// TOPOLOGY & CONNECTION RENDERING
+// =====================================================================
+//
+// A preset can optionally define `groups` — lists of landmark names
+// in connection order — and an optional `interior` list of names
+// that are NOT part of any boundary (center points, free references).
+// For each group, we draw a connection between consecutive members,
+// using either straight line segments or a smooth Catmull-Rom curve.
+// If `closed: true`, the last member connects back to the first.
+//
+// This serves two purposes:
+//   1. Visual feedback in the calibration tool — user sees the
+//      topology they're building
+//   2. Downstream data for the simulator — the topology describes
+//      which points form closed chamber boundaries, which form
+//      valve leaflets, which are free references
+
+// Build the connection list from the active preset's groups + current
+// landmark positions. Returns [{style, color, points: [{x,y,name}, ...]}]
+function computeConnections(presetName) {
+  if (!presetName) return [];
+  const preset = state.presets[presetName];
+  if (!preset || !preset.groups) return [];
+
+  // Build a name -> landmark lookup
+  const byName = {};
+  for (const lm of state.landmarks) byName[lm.name] = lm;
+
+  const out = [];
+  for (const group of preset.groups) {
+    if (group.style === 'free') continue; // no connections for free points
+    const points = [];
+    for (const name of group.members) {
+      const lm = byName[name];
+      if (lm) points.push({ x: lm.x, y: lm.y, name: lm.name });
+    }
+    if (points.length < 2) continue; // need at least 2 to connect
+    out.push({
+      style: group.style,
+      closed: !!group.closed,
+      color: group.color || '#888',
+      points,
+    });
+  }
+  return out;
+}
+
+// Build SVG path 'd' attribute for a connection group.
+// style='straight' → M + L commands (polygon if closed, polyline if open)
+// style='smooth'  → M + C commands (Catmull-Rom converted to cubic Bézier)
+function connectionPathD(conn) {
+  const pts = conn.points;
+  if (pts.length === 0) return '';
+  if (conn.style === 'straight') {
+    let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+    for (let i = 1; i < pts.length; i++) {
+      d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`;
+    }
+    if (conn.closed) d += ' Z';
+    return d;
+  }
+  if (conn.style === 'smooth') {
+    return smoothPath(pts, conn.closed);
+  }
+  return '';
+}
+
+// Generate a smooth path through points using Catmull-Rom converted to
+// cubic Bézier. If closed, the curve wraps from the last point back to
+// the first. Tension parameter controls curve "tightness":
+//   tension=0   → straight lines through points (degenerate Catmull-Rom)
+//   tension=0.5 → balanced (default)
+//   tension=1   → very curvy, can overshoot
+function isPreviewMode() { return state.mode === 'preview'; }
+function smoothPath(pts, closed, tension = 0.5) {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  if (pts.length === 2) {
+    // 2 points: just a line
+    return `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)} L ${pts[1].x.toFixed(2)} ${pts[1].y.toFixed(2)}`;
+  }
+  // For closed curves, we wrap the points so the last connects to the first
+  const n = pts.length;
+  const get = (i) => {
+    if (closed) {
+      // Wrap around
+      return pts[((i % n) + n) % n];
+    } else {
+      // Clamp to endpoints
+      if (i < 0) return pts[0];
+      if (i >= n) return pts[n - 1];
+      return pts[i];
+    }
+  };
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  const segCount = closed ? n : n - 1;
+  for (let i = 0; i < segCount; i++) {
+    const p0 = get(i - 1);
+    const p1 = get(i);
+    const p2 = get(i + 1);
+    const p3 = get(i + 2);
+    // Catmull-Rom to Bézier conversion
+    const c1x = p1.x + (p2.x - p0.x) * tension / 3;
+    const c1y = p1.y + (p2.y - p0.y) * tension / 3;
+    const c2x = p2.x - (p3.x - p1.x) * tension / 3;
+    const c2y = p2.y - (p3.y - p1.y) * tension / 3;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+  if (closed) d += ' Z';
+  return d;
+}
+
+// Distance between two points in pixels (Euclidean)
+function distPx(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Distance between two landmarks in cm, using calibration
+function distCm(a, b) {
+  if (!state.pxPerCm) return null;
+  return distPx(a, b) / state.pxPerCm;
+}
+
+// Return the connected neighbors of a landmark (within active preset
+// topology). Used for distance display when hovering/selecting.
+function connectedNeighbors(lmName) {
+  if (!state.activePreset) return [];
+  const preset = state.presets[state.activePreset];
+  if (!preset || !preset.groups) return [];
+  const out = [];
+  const byName = {};
+  for (const lm of state.landmarks) byName[lm.name] = lm;
+  for (const group of preset.groups) {
+    if (group.style === 'free') continue;
+    const idx = group.members.indexOf(lmName);
+    if (idx < 0) continue;
+    // Previous (with wrap if closed)
+    if (idx > 0) {
+      const prevName = group.members[idx - 1];
+      if (byName[prevName]) out.push({ name: prevName, landmark: byName[prevName], group });
+    } else if (group.closed) {
+      const prevName = group.members[group.members.length - 1];
+      if (byName[prevName]) out.push({ name: prevName, landmark: byName[prevName], group });
+    }
+    // Next (with wrap if closed)
+    if (idx < group.members.length - 1) {
+      const nextName = group.members[idx + 1];
+      if (byName[nextName]) out.push({ name: nextName, landmark: byName[nextName], group });
+    } else if (group.closed) {
+      const nextName = group.members[0];
+      if (byName[nextName]) out.push({ name: nextName, landmark: byName[nextName], group });
+    }
+  }
+  return out;
 }
 
 function saveCurrentAsPreset() {
@@ -1485,6 +1743,28 @@ function renderLandmarks() {
   const svg = $('overlaySvg');
   svg.innerHTML = '';
 
+  // Connections (curves/lines between landmarks) — drawn first so points
+  // render on top. Skipped in Preview mode (too noisy with tiny dots).
+  if (state.showCurves && !isPreviewMode()) {
+    const conns = computeConnections(state.activePreset);
+    for (const conn of conns) {
+      const d = connectionPathD(conn);
+      if (!d) continue;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', conn.color);
+      // Smooth curves get a bit thicker
+      path.setAttribute('stroke-width', conn.style === 'smooth' ? 2.5 : 1.8);
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('opacity', '0.75');
+      path.setAttribute('pointer-events', 'none');
+      path.setAttribute('class', 'connection connection-' + conn.style);
+      svg.appendChild(path);
+    }
+  }
+
   // Grid
   if (state.snapToGrid && state.pxPerCm && state.image) {
     const gridPx = state.pxPerCm * state.gridSpacing;
@@ -1601,6 +1881,32 @@ function renderList() {
 
     li.onclick = () => selectLandmark(lm.id);
     list.appendChild(li);
+
+    // If this landmark is selected, show distance to connected neighbors
+    if (state.selectedId === lm.id) {
+      const neighbors = connectedNeighbors(lm.name);
+      if (neighbors.length > 0) {
+        const distDiv = document.createElement('div');
+        distDiv.className = 'lm-distances';
+        for (const n of neighbors) {
+          const px = distPx(lm, n.landmark);
+          const cm = distCm(lm, n.landmark);
+          const line = document.createElement('div');
+          line.className = 'lm-dist-line';
+          line.innerHTML = `<span class="lm-dist-arrow">↔</span> <span class="lm-dist-name">${n.name}</span> <span class="lm-dist-val">${cm !== null ? cm.toFixed(2) + ' cm' : px.toFixed(1) + ' px'}</span>`;
+          // Clicking the neighbor name selects it
+          const nameSpan = line.querySelector('.lm-dist-name');
+          nameSpan.style.cursor = 'pointer';
+          nameSpan.onclick = (e) => {
+            e.stopPropagation();
+            const target = state.landmarks.find(l => l.name === n.name);
+            if (target) selectLandmark(target.id);
+          };
+          distDiv.appendChild(line);
+        }
+        li.appendChild(distDiv);
+      }
+    }
   }
   $('lmCount').textContent = `(${state.landmarks.length})`;
   $('btnClearAll').disabled = state.landmarks.length === 0;
