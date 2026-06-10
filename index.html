@@ -654,6 +654,7 @@ function loadImageFile(file) {
       state.edgeW = state.edgeH = 0;
       state.edgeReady = false;
       hideEdgeOverlay();
+      setEdgeStatus('idle', 'Edge map: not computed');
       setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
       renderAll();
       showWelcomeTip();
@@ -969,25 +970,35 @@ function centeredSamples(n, p) {
 // threshold and rank.
 
 function computeEdgeMap() {
-  if (!state.image) return Promise.resolve(false);
+  if (!state.image) {
+    setEdgeStatus('idle', 'Edge map: not computed (no image)');
+    return Promise.resolve(false);
+  }
   if (state.edgeReady) return Promise.resolve(true);
   if (state.edgeComputing) return new Promise(r => setTimeout(() => computeEdgeMap().then(r), 100));
+
+  // Defensive checks for tiny/invalid images
+  const W0 = state.image.naturalWidth;
+  const H0 = state.image.naturalHeight;
+  if (!W0 || !H0 || W0 < 10 || H0 < 10) {
+    const msg = `Image too small for edge detection (${W0}×${H0}px, need at least 10×10)`;
+    setEdgeStatus('error', msg);
+    setStatus(msg, 'err');
+    return Promise.resolve(false);
+  }
 
   state.edgeComputing = true;
   setStatus('Computing edge map (Sobel)…', 'warn');
   setEdgeStatus('computing', 'Edge map: computing…');
 
   return new Promise((resolve) => {
-    // Use requestAnimationFrame to yield to UI, then run async
     setTimeout(() => {
       try {
         const img = state.image;
-        const W0 = img.naturalWidth;
-        const H0 = img.naturalHeight;
         // Downsample target ~400px wide
         const targetW = Math.min(400, W0);
         const scale = targetW / W0;
-        const targetH = Math.round(H0 * scale);
+        const targetH = Math.max(1, Math.round(H0 * scale));
 
         // Draw to offscreen canvas at the target size, get grayscale pixels
         const off = document.createElement('canvas');
