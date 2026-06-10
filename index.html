@@ -392,6 +392,23 @@
             <option value="80">80 px (very sparse)</option>
           </select>
         </div>
+        <div class="row" style="margin-top:6px">
+          <label>Snap mode</label>
+          <select id="traceSnapModeSel">
+            <option value="path" selected>Path (recommended)</option>
+            <option value="radius">Radius (old)</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>Strip w</label>
+          <select id="traceSnapWidthSel">
+            <option value="10">10 px (narrow)</option>
+            <option value="20">20 px</option>
+            <option value="25" selected>25 px (default)</option>
+            <option value="40">40 px (wide)</option>
+            <option value="60">60 px (very wide)</option>
+          </select>
+        </div>
         <div class="btn-row" style="margin-top:6px">
           <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
           <button id="btnClearAll" class="danger" disabled>Clear all</button>
@@ -519,6 +536,8 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
+  traceSnapMode: 'path',   // 'path' (snap to perpendicular strip along path) or 'radius' (circular search)
+  traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -821,6 +840,12 @@ function bindUI() {
   $('btnTrace').onclick = () => setTraceActive(!state.traceActive);
   $('traceIntervalSel').onchange = (e) => {
     state.traceInterval = parseInt(e.target.value) || 20;
+  };
+  $('traceSnapModeSel').onchange = (e) => {
+    state.traceSnapMode = e.target.value;
+  };
+  $('traceSnapWidthSel').onchange = (e) => {
+    state.traceSnapWidth = parseInt(e.target.value) || 25;
   };
 
   // Export
@@ -1886,10 +1911,20 @@ function undoLastTrace() {
 }
 
 function addTracePoint(x, y, isFirst) {
-  // Auto-snap to nearest edge if enabled
+  // Auto-snap based on the active snap mode
   let px = x, py = y;
   if (state.snapEnabled && state.edgeReady) {
-    const result = snapToNearestEdge(x, y, state.snapRadius);
+    let result;
+    if (state.traceSnapMode === 'path' && !isFirst) {
+      // Snap to the strongest edge in a perpendicular strip along the
+      // local path tangent. This prevents the trace from jumping to
+      // unrelated edges (e.g., the opposite wall, a noise spike) — the
+      // search is constrained to edges along the path direction.
+      result = snapToNearestEdgeAlongPath(x, y, state.traceSnapWidth);
+    } else {
+      // Original circular search
+      result = snapToNearestEdge(x, y, state.snapRadius);
+    }
     if (result.magnitude > 0) {
       px = result.x;
       py = result.y;
@@ -1910,6 +1945,73 @@ function addTracePoint(x, y, isFirst) {
   state.landmarks.push(lm);
   state.tracePoints.push(lm);
   state.traceLastPoint = { x: px, y: py };
+}
+
+// Find the pixel (in original-image coordinates) with the highest edge
+// magnitude in a perpendicular strip along the local path tangent.
+// 'path' is the recent mouse positions; we compute the tangent at the
+// query point, then restrict the search to a rectangle:
+//   - long axis = path direction (in front of and behind the query point)
+//   - short axis = perpendicular to path direction, half-width = `width`
+// If no edge above the minimum threshold is found, returns the input.
+function snapToNearestEdgeAlongPath(x, y, halfWidth) {
+  if (!state.edgeReady || !state.edgeMap) return { x, y, magnitude: 0 };
+  if (state.tracePreview.length < 3) {
+    // Not enough path history — fall back to circular
+    return snapToNearestEdge(x, y, state.snapRadius);
+  }
+  // Compute local tangent from the recent path
+  const preview = state.tracePreview;
+  const n = preview.length;
+  // Use the last 5 points (or all if fewer) to smooth the tangent
+  const lookback = Math.min(5, n - 1);
+  const pPrev = preview[n - 1 - lookback];
+  const pCurr = preview[n - 1];
+  let dx = pCurr.x - pPrev.x;
+  let dy = pCurr.y - pPrev.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-6) {
+    // Degenerate (point didn't move) — fall back to circular
+    return snapToNearestEdge(x, y, state.snapRadius);
+  }
+  dx /= len;
+  dy /= len;
+  // Perpendicular unit vector
+  const px = -dy;
+  const py = dx;
+  // The search rectangle: long axis = traceInterval (in path direction),
+  // short axis = 2 * halfWidth (perpendicular)
+  const longHalf = state.traceInterval;
+  const shortHalf = halfWidth;
+  // Convert to edge-map coordinates
+  const s = state.edgeScale;
+  const W = state.edgeW, H = state.edgeH;
+  const ex0 = x * s, ey0 = y * s;
+  // Walk along the long axis from -longHalf to +longHalf in steps,
+  // and at each step walk the short axis from -shortHalf to +shortHalf
+  const steps = Math.max(3, Math.ceil(longHalf * s / 2));
+  const perpSteps = Math.max(2, Math.ceil(shortHalf * s / 2));
+  const minMag = 0.15;
+  let bestEx = ex0, bestEy = ey0, bestMag = -1;
+  for (let i = -steps; i <= steps; i++) {
+    // Center of this slice along the long axis
+    const cx = ex0 + dx * s * (i * longHalf / steps);
+    const cy = ey0 + dy * s * (i * longHalf / steps);
+    for (let j = -perpSteps; j <= perpSteps; j++) {
+      const ex = Math.round(cx + px * s * (j * shortHalf / perpSteps));
+      const ey = Math.round(cy + py * s * (j * shortHalf / perpSteps));
+      if (ex < 1 || ex >= W - 1 || ey < 1 || ey >= H - 1) continue;
+      const mag = state.edgeMap[ey * W + ex];
+      if (mag < minMag) continue;
+      if (mag > bestMag) {
+        bestMag = mag;
+        bestEx = ex;
+        bestEy = ey;
+      }
+    }
+  }
+  if (bestMag < 0) return { x, y, magnitude: 0 };
+  return { x: bestEx / s, y: bestEy / s, magnitude: bestMag };
 }
 
 function updateTracePreview() {
