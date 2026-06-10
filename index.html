@@ -106,6 +106,22 @@
   #mode-badge.editing { background: #2c5cff; }
   #mode-badge.preview { background: #5f4cff; }
 
+  /* Floating edge status badge (mirrors sidebar indicator) */
+  .edge-badge {
+    position: absolute;
+    bottom: 38px; right: 10px;
+    padding: 5px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 500;
+    z-index: 11; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    border: 1px solid #2a2a30;
+    max-width: 360px;
+  }
+  .edge-badge-idle      { background: #1f1f23; color: #8a8a92; border-color: #3a3a40; }
+  .edge-badge-computing { background: #4a3a10; color: #ffd078; border-color: #6a5020; }
+  .edge-badge-ready     { background: #143a1f; color: #7fdf98; border-color: #205a30; }
+  .edge-badge-error     { background: #4a1018; color: #ff8b98; border-color: #6a2030; }
+
   /* ---- Context menu ---- */
   #ctxmenu {
     position: absolute; background: #1f1f23; border: 1px solid #3a3a40;
@@ -175,6 +191,29 @@
         </div>
         <input type="file" id="fileImg" accept="image/*" style="display:none">
         <input type="file" id="fileJson" accept=".json,application/json" style="display:none">
+      </div>
+
+      <div class="section" style="border: 1px solid #2c5cff; background: #0f1a30; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px;">
+        <h2 style="color: #5fb8ff;">Edge Snap</h2>
+        <div id="edgeStatus" class="edge-status edge-status-idle" style="margin-top:0;margin-bottom:8px">Edge map: not computed</div>
+        <label class="toggle-row"><input type="checkbox" id="snapEnabledCb" checked> Auto-snap new placements to edges</label>
+        <div class="row" style="margin-top:6px">
+          <label>Radius</label>
+          <select id="snapRadiusSel">
+            <option value="10">10 px (tight)</option>
+            <option value="20">20 px</option>
+            <option value="30" selected>30 px (default)</option>
+            <option value="50">50 px</option>
+            <option value="80">80 px</option>
+            <option value="120">120 px (loose)</option>
+          </select>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnComputeEdges" disabled>Compute edges</button>
+          <button id="btnSnapAll" disabled title="Snap every landmark to its nearest detected edge">Snap all</button>
+        </div>
+        <label class="toggle-row" style="margin-top:6px"><input type="checkbox" id="showEdgeOverlay"> Show edge overlay</label>
+        <p class="help" style="margin-top:4px">Sobel edge detection finds tissue boundaries. New landmarks auto-snap to the nearest edge within the radius. Status updates in real time.</p>
       </div>
 
       <div class="section">
@@ -250,29 +289,6 @@
       </div>
 
       <div class="section">
-        <h2>Edge Snap</h2>
-        <label class="toggle-row"><input type="checkbox" id="snapEnabledCb" checked> Auto-snap new placements to edges</label>
-        <div class="row" style="margin-top:6px">
-          <label>Radius</label>
-          <select id="snapRadiusSel">
-            <option value="10">10 px (tight)</option>
-            <option value="20">20 px</option>
-            <option value="30" selected>30 px (default)</option>
-            <option value="50">50 px</option>
-            <option value="80">80 px</option>
-            <option value="120">120 px (loose)</option>
-          </select>
-        </div>
-        <div class="btn-row" style="margin-top:6px">
-          <button id="btnComputeEdges" disabled>Compute edges</button>
-          <button id="btnSnapAll" disabled title="Snap every landmark to its nearest detected edge">Snap all</button>
-        </div>
-        <label class="toggle-row" style="margin-top:6px"><input type="checkbox" id="showEdgeOverlay"> Show edge overlay</label>
-        <div id="edgeStatus" class="edge-status edge-status-idle">Edge map: not computed</div>
-        <p class="help" style="margin-top:4px">Edge detection (Sobel) finds tissue boundaries in the image. New landmarks auto-snap to the nearest edge within the search radius. Use a smaller radius for fine structures, larger for fuzzy ones.</p>
-      </div>
-
-      <div class="section">
         <h2>Landmarks <span id="lmCount" style="color:#5a5a62">(0)</span></h2>
         <div class="btn-row">
           <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
@@ -318,6 +334,7 @@
       <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
     <div id="mode-badge" class="editing">EDIT</div>
+    <div id="edgeBadge" class="edge-badge edge-badge-idle">Edge map: not computed</div>
     <div id="status">
       <span id="statusLeft">No image loaded</span>
       <span id="statusRight"></span>
@@ -1429,9 +1446,16 @@ function setStatus(msg, kind) {
 // wiped by render() calls the way the bottom status bar does.
 function setEdgeStatus(state, text) {
   const el = $('edgeStatus');
-  if (!el) return;
-  el.className = 'edge-status edge-status-' + state;
-  el.textContent = text;
+  if (el) {
+    el.className = 'edge-status edge-status-' + state;
+    el.textContent = text;
+  }
+  // Also update floating badge in bottom-right of canvas (always visible)
+  const badge = $('edgeBadge');
+  if (badge) {
+    badge.className = 'edge-badge edge-badge-' + state;
+    badge.textContent = text;
+  }
 }
 
 // =====================================================================
