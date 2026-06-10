@@ -395,9 +395,9 @@
         <div class="row" style="margin-top:6px">
           <label>Snap mode</label>
           <select id="traceSnapModeSel">
-            <option value="path" selected>Path (recommended)</option>
+            <option value="off" selected>Off (exact path)</option>
+            <option value="path">Path strip (recommended)</option>
             <option value="radius">Radius (old)</option>
-            <option value="off">Off (exact path)</option>
           </select>
         </div>
         <div class="row" style="margin-top:6px">
@@ -537,7 +537,7 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
-  traceSnapMode: 'path',   // 'path' (snap to perpendicular strip along path), 'radius' (circular search), or 'off' (no snap, exact trace position)
+  traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
 };
 
@@ -1819,7 +1819,9 @@ function setTraceActive(active) {
   // Position the trace preview SVG over the image
   sizeTracePreview();
   if (active) {
-    setStatus('Trace mode ON — click and drag to drop points along a structure.', 'warn');
+    const modeDesc = state.traceSnapMode === 'off' ? 'exact path (no snap)' :
+                     state.traceSnapMode === 'path' ? 'path strip snap' : 'radius snap';
+    setStatus(`Trace mode ON (${modeDesc}) — click and drag to drop points along a structure.`, 'warn');
   } else {
     setStatus('Trace mode OFF.', '');
     clearTracePreview();
