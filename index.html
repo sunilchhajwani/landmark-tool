@@ -395,7 +395,8 @@
         <div class="row" style="margin-top:6px">
           <label>Snap mode</label>
           <select id="traceSnapModeSel">
-            <option value="path" selected>Path (recommended)</option>
+            <option value="off" selected>Off (exact path)</option>
+            <option value="path">Path strip (recommended)</option>
             <option value="radius">Radius (old)</option>
           </select>
         </div>
@@ -536,7 +537,7 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
-  traceSnapMode: 'path',   // 'path' (snap to perpendicular strip along path) or 'radius' (circular search)
+  traceSnapMode: 'off',    // 'off' (exact path, no snap), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
 };
 
@@ -1913,7 +1914,7 @@ function undoLastTrace() {
 function addTracePoint(x, y, isFirst) {
   // Auto-snap based on the active snap mode
   let px = x, py = y;
-  if (state.snapEnabled && state.edgeReady) {
+  if (state.snapEnabled && state.edgeReady && state.traceSnapMode !== 'off') {
     let result;
     if (state.traceSnapMode === 'path' && !isFirst) {
       // Snap to the strongest edge in a perpendicular strip along the
@@ -1921,15 +1922,17 @@ function addTracePoint(x, y, isFirst) {
       // unrelated edges (e.g., the opposite wall, a noise spike) — the
       // search is constrained to edges along the path direction.
       result = snapToNearestEdgeAlongPath(x, y, state.traceSnapWidth);
-    } else {
+    } else if (state.traceSnapMode === 'radius') {
       // Original circular search
       result = snapToNearestEdge(x, y, state.snapRadius);
     }
-    if (result.magnitude > 0) {
+    if (result && result.magnitude > 0) {
       px = result.x;
       py = result.y;
     }
   }
+  // If traceSnapMode === 'off' OR no edge found, points land exactly
+  // on the path the user traced (px = x, py = y).
   // Increment batch counter and name
   state.traceBatchCounter++;
   const name = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
