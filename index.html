@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Landmark Tool — Generic Image Coordinate Calibrator</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0e0e10; color: #e6e6e6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; }
+  #app { display: flex; height: 100vh; }
+
+  /* ---- Sidebar ---- */
+  #sidebar {
+    width: 320px; flex-shrink: 0;
+    background: #18181b; border-right: 1px solid #2a2a30;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  #sidebar header {
+    padding: 12px 14px; border-bottom: 1px solid #2a2a30;
+    background: #1f1f23;
+  }
+  #sidebar header h1 { font-size: 14px; margin: 0 0 2px 0; color: #f5f5f5; }
+  #sidebar header p { font-size: 11px; margin: 0; color: #8a8a92; }
+  #sidebar .scroll { flex: 1; overflow-y: auto; padding: 12px 14px; }
+  #sidebar footer { padding: 10px 12px; border-top: 1px solid #2a2a30; background: #1f1f23; }
+
+  .section { margin-bottom: 18px; }
+  .section h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8a8a92; margin: 0 0 8px 0; }
+  .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .row label { font-size: 12px; color: #c8c8ce; min-width: 70px; }
+  .row input[type=text], .row input[type=number], .row select {
+    flex: 1; background: #0e0e10; border: 1px solid #2a2a30; color: #e6e6e6;
+    padding: 5px 7px; font-size: 12px; border-radius: 4px; font-family: inherit;
+  }
+  .row input:focus, .row select:focus { outline: none; border-color: #4a8cff; }
+
+  button {
+    background: #2a2a30; color: #e6e6e6; border: 1px solid #3a3a40;
+    padding: 6px 10px; font-size: 12px; border-radius: 4px; cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { background: #3a3a40; }
+  button.primary { background: #2c5cff; border-color: #2c5cff; color: white; }
+  button.primary:hover { background: #4470ff; }
+  button.danger { background: #4a1f25; border-color: #6a2f35; color: #ffb0b8; }
+  button.danger:hover { background: #6a2f35; }
+  button.active { background: #2c5cff; border-color: #2c5cff; color: white; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn-row button { flex: 1; min-width: 0; }
+
+  .toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c8c8ce; margin-bottom: 4px; cursor: pointer; }
+  .toggle-row input { margin: 0; }
+
+  /* ---- Landmarks list ---- */
+  #lmList { list-style: none; padding: 0; margin: 0; }
+  #lmList li {
+    background: #0e0e10; border: 1px solid #2a2a30; border-radius: 4px;
+    padding: 6px 8px; margin-bottom: 4px; font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #lmList li.selected { border-color: #2c5cff; background: #1a2540; }
+  #lmList .swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; border: 1px solid #00000040; }
+  #lmList .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #lmList .coords { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10px; color: #8a8a92; }
+  #lmList .del { background: none; border: none; color: #8a8a92; padding: 0 4px; cursor: pointer; font-size: 14px; }
+  #lmList .del:hover { color: #ff8088; }
+
+  /* ---- Canvas area ---- */
+  #stage-wrap { flex: 1; position: relative; overflow: hidden; background: #050507; }
+  #dropzone {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #4a4a52; font-size: 16px; pointer-events: none;
+    text-align: center; padding: 20px;
+  }
+  #dropzone.drag-over { background: #1a2540; color: #6a9fff; }
+  #stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  #bgImg { position: absolute; top: 0; left: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+  #overlaySvg { position: absolute; top: 0; left: 0; pointer-events: none; }
+  #overlaySvg .interactive { pointer-events: all; cursor: grab; }
+  #overlaySvg .interactive.dragging { cursor: grabbing; }
+
+  /* ---- Status bar ---- */
+  #status {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(20, 20, 23, 0.92); border-top: 1px solid #2a2a30;
+    padding: 5px 12px; font-size: 11px; color: #8a8a92;
+    display: flex; justify-content: space-between; gap: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    z-index: 10;
+  }
+  #status .ok { color: #5fd178; }
+  #status .warn { color: #ffb454; }
+  #status .err { color: #ff6b78; }
+
+  /* ---- Mode indicators ---- */
+  #mode-badge {
+    position: absolute; top: 10px; right: 10px;
+    background: #2c5cff; color: white;
+    padding: 5px 10px; border-radius: 4px; font-size: 11px; font-weight: 500;
+    z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  }
+  #mode-badge.calibrating { background: #f5a623; }
+  #mode-badge.editing { background: #2c5cff; }
+  #mode-badge.preview { background: #5f4cff; }
+
+  /* ---- Context menu ---- */
+  #ctxmenu {
+    position: absolute; background: #1f1f23; border: 1px solid #3a3a40;
+    border-radius: 4px; padding: 4px 0; font-size: 12px; z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none; min-width: 180px;
+  }
+  #ctxmenu .item { padding: 6px 12px; cursor: pointer; }
+  #ctxmenu .item:hover { background: #2c5cff; color: white; }
+  #ctxmenu .sep { height: 1px; background: #3a3a40; margin: 4px 0; }
+
+  /* ---- Calibration overlay ---- */
+  .cal-line { stroke: #f5a623; stroke-width: 2; stroke-dasharray: 4 3; }
+  .cal-point { fill: #f5a623; stroke: white; stroke-width: 1.5; }
+
+  /* ---- Help text ---- */
+  .help { font-size: 11px; color: #6a6a72; line-height: 1.5; }
+  .help kbd {
+    background: #2a2a30; border: 1px solid #3a3a40; border-radius: 3px;
+    padding: 1px 5px; font-size: 10px; font-family: ui-monospace, monospace;
+    color: #c8c8ce;
+  }
+  .help p { margin: 4px 0; }
+
+  .tip {
+    margin-top: 8px; padding: 8px 10px;
+    background: #1a2540; border: 1px solid #2c5cff; border-left-width: 3px;
+    border-radius: 4px; font-size: 11px; line-height: 1.5; color: #c8d4f0;
+  }
+  .tip strong { color: #f5f5f5; }
+  .tip .tip-action {
+    display: inline-block; margin-top: 4px;
+    color: #5fb8ff; cursor: pointer; text-decoration: underline;
+  }
+  .tip .tip-action:hover { color: #8fcfff; }
+  .tip .tip-dismiss {
+    float: right; color: #6a6a72; cursor: pointer; font-size: 13px; line-height: 1;
+    margin-left: 6px;
+  }
+  .tip .tip-dismiss:hover { color: #c8c8ce; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <h1>Landmark Tool</h1>
+      <p>Generic image coordinate calibrator</p>
+    </header>
+    <div class="scroll">
+
+      <div class="section">
+        <h2>Image</h2>
+        <div class="btn-row">
+          <button id="btnLoadImg">Load image…</button>
+          <button id="btnLoadJson">Load JSON…</button>
+        </div>
+        <input type="file" id="fileImg" accept="image/*" style="display:none">
+        <input type="file" id="fileJson" accept=".json,application/json" style="display:none">
+      </div>
+
+      <div class="section">
+        <h2>Layout Preset</h2>
+        <div class="row">
+          <select id="presetSelect">
+            <option value="">— pick a preset —</option>
+            <optgroup label="Generic">
+              <option value="__blank__" title="Start with no landmarks. Add them by right-clicking the image.">— blank (no landmarks) —</option>
+              <option value="__grid_3__" title="9 evenly-spaced points. Good for very simple layouts.">Grid 3×3 (uniform)</option>
+              <option value="__grid_5__" title="25 evenly-spaced points. Good general-purpose starting point.">Grid 5×5 (uniform)</option>
+              <option value="__grid_7__" title="49 evenly-spaced points. Good for detailed images.">Grid 7×7 (uniform)</option>
+              <option value="__grid_10__" title="100 evenly-spaced points. Dense net, use for fine-grained placement.">Grid 10×10 (uniform)</option>
+              <option value="__adaptive_5__" title="25 points, denser in center, sparser at edges. Good for centered content.">Adaptive 5 (centered)</option>
+              <option value="__adaptive_7__" title="49 points, denser in center, sparser at edges. Recommended for typical reference images.">Adaptive 7 (centered)</option>
+              <option value="__adaptive_9__" title="81 points, denser in center, sparser at edges. Use when Adaptive 7 isn't detailed enough.">Adaptive 9 (centered)</option>
+            </optgroup>
+            <optgroup label="Examples (built-in, you can delete)" id="optgroup-examples">
+            </optgroup>
+            <optgroup label="Your saved presets" id="optgroup-user">
+            </optgroup>
+          </select>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnApplyPreset" disabled>Apply preset</button>
+          <button id="btnReapplyPreset" disabled title="Reset all landmarks to their preset default positions">Re-apply</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnSaveAsPreset" disabled>Save current as preset…</button>
+          <button id="btnDeletePreset" disabled class="danger">Delete preset</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnLoadPresetFile">Load preset file…</button>
+          <button id="btnExportPresetFile">Export current preset</button>
+        </div>
+        <input type="file" id="filePreset" accept=".json,application/json" style="display:none">
+        <div id="presetTip" class="tip" style="display:none"></div>
+        <p class="help" style="margin-top:4px">For first-time use of a new image, place landmarks by hand then "Save current as preset" — next time, just pick your preset and drag any misaligned points. Coordinates are stored as fractions of image size, so presets adapt to any image dimensions.</p>
+      </div>
+
+      <div class="section">
+        <h2>Calibration</h2>
+        <div class="btn-row">
+          <button id="btnCalibrate">Set scale</button>
+          <button id="btnClearCal" disabled>Clear</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>px / cm</label>
+          <input type="text" id="pxPerCm" readonly placeholder="not set">
+        </div>
+        <p class="help" style="margin-top:4px">Click "Set scale", then click two points a known real-world distance apart and enter the distance in cm.</p>
+      </div>
+
+      <div class="section">
+        <h2>Mode</h2>
+        <div class="btn-row">
+          <button id="btnEdit" class="active">Edit</button>
+          <button id="btnPreview">Preview</button>
+        </div>
+        <p class="help" style="margin-top:4px">In Edit mode, drag points. In Preview, points are tiny dots (final rendering view).</p>
+      </div>
+
+      <div class="section">
+        <h2>Display</h2>
+        <label class="toggle-row"><input type="checkbox" id="showPoints" checked> Show points</label>
+        <label class="toggle-row"><input type="checkbox" id="showLabels" checked> Show labels</label>
+        <label class="toggle-row"><input type="checkbox" id="showCurves" checked> Show curves</label>
+        <label class="toggle-row"><input type="checkbox" id="showGrid"> Snap-to-grid</label>
+        <div class="row" style="margin-top:6px">
+          <label>Grid cm</label>
+          <input type="number" id="gridSpacing" value="0.5" min="0.1" max="5" step="0.1">
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Landmarks <span id="lmCount" style="color:#5a5a62">(0)</span></h2>
+        <div class="btn-row">
+          <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
+          <button id="btnClearAll" class="danger" disabled>Clear all</button>
+        </div>
+        <ul id="lmList"></ul>
+      </div>
+
+      <div class="section">
+        <h2>Export</h2>
+        <div class="btn-row">
+          <button id="btnExportJson" class="primary" disabled>Export JSON</button>
+          <button id="btnExportSvg" disabled>Export SVG</button>
+        </div>
+        <p class="help" style="margin-top:4px">JSON = coordinates only (for simulator). SVG = portable image+landmarks file.</p>
+      </div>
+
+      <div class="section">
+        <h2>Help</h2>
+        <div class="help">
+          <p><kbd>Right-click</kbd> image → add point / curve point</p>
+          <p><kbd>Drag</kbd> point → reposition</p>
+          <p><kbd>Scroll</kbd> → zoom in/out</p>
+          <p><kbd>Alt+drag</kbd> → pan</p>
+          <p><kbd>Click</kbd> point in list → select &amp; highlight</p>
+          <p><kbd>Del</kbd> on selected → remove landmark</p>
+        </div>
+      </div>
+
+    </div>
+    <footer>
+      <div class="help">v1.0 · Drop any image, place landmarks, export.</div>
+      <div class="help" style="margin-top:6px;font-size:10px;color:#5a5a62">
+        Built with <a href="https://hermes-agent.nousresearch.com/docs" target="_blank" rel="noopener" style="color:#7a8aff;text-decoration:none">Hermes Agent</a>
+      </div>
+    </footer>
+  </aside>
+
+  <main id="stage-wrap">
+    <div id="dropzone">Drop an image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" in the sidebar</span></div>
+    <div id="stage">
+      <img id="bgImg" alt="">
+      <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="mode-badge" class="editing">EDIT</div>
+    <div id="status">
+      <span id="statusLeft">No image loaded</span>
+      <span id="statusRight"></span>
+    </div>
+    <div id="ctxmenu"></div>
+  </main>
+</div>
+
+<script>
+// =====================================================================
+// LANDMARK TOOL — generic image coordinate calibrator
+// =====================================================================
+
+const state = {
+  image: null,             // HTMLImageElement
+  imageName: '',
+  imageDataUrl: '',        // for SVG embed
+  naturalW: 0, naturalH: 0,
+  scale: 1,                // display zoom
+  panX: 0, panY: 0,        // display pan
+  pxPerCm: null,           // calibration
+  calOrigin: null,         // {x,y} first cal point
+  calSecond: null,         // {x,y} second cal point
+  landmarks: [],           // [{id, name, type, x, y, color, group}]
+  selectedId: null,
+  showPoints: true,
+  showLabels: true,
+  showCurves: true,
+  snapToGrid: false,
+  gridSpacing: 0.5,
+  mode: 'edit',            // 'edit' | 'preview'
+  nextId: 1,
+  presets: {},             // {presetName: {landmarks: [{name, x_frac, y_frac, color, group}]}}
+  activePreset: null,      // name of currently applied preset (for "re-apply")
+  presetLandmarkIds: {},   // {landmarkName: id} for re-apply tracking
+};
+
+const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
+
+// =====================================================================
+// BUILT-IN PRESETS
+// Landmark positions are stored as fractions of image width/height
+// (0..1) so presets adapt to any image dimensions.
+// =====================================================================
+
+// Parasternal Long Axis (PLAX) — normal end-diastole approximation.
+// Coordinate system reminder for PLAX images:
+//   - Sector narrows at top (apex/transducer), widens at bottom (deep)
+//   - In PLAX: aortic root sits upper-center, MV to its right, LV cavity
+//     dominates the left/center, posterior wall along the bottom, LA on
+//     the right. These fractions target the typical screen layout seen
+//     in TTE PLAX stills. Drag to fit your specific image.
+const PRESET_PLAX_NORMAL = {
+  description: 'Parasternal Long Axis, normal end-diastole approximation',
+  landmarks: [
+    // Aortic root complex
+    { name: 'ao_root_center',         x_frac: 0.50, y_frac: 0.32, group: 'aortic',     color: '#ff7faa' },
+    { name: 'ao_root_anterior_wall',  x_frac: 0.50, y_frac: 0.27, group: 'aortic',     color: '#ff7faa' },
+    { name: 'ao_root_posterior_wall', x_frac: 0.50, y_frac: 0.37, group: 'aortic',     color: '#ff7faa' },
+    { name: 'av_right_coronary_cusp', x_frac: 0.45, y_frac: 0.32, group: 'aortic',     color: '#ff7faa' },
+    { name: 'av_left_coronary_cusp',  x_frac: 0.55, y_frac: 0.32, group: 'aortic',     color: '#ff7faa' },
+    { name: 'av_non_coronary_cusp',   x_frac: 0.50, y_frac: 0.36, group: 'aortic',     color: '#ff7faa' },
+    // Mitral valve
+    { name: 'mv_annulus_anterior',    x_frac: 0.62, y_frac: 0.38, group: 'mitral',     color: '#5fb8ff' },
+    { name: 'mv_annulus_posterior',   x_frac: 0.70, y_frac: 0.45, group: 'mitral',     color: '#5fb8ff' },
+    { name: 'mv_anterior_leaflet_tip',x_frac: 0.55, y_frac: 0.50, group: 'mitral',     color: '#5fb8ff' },
+    { name: 'mv_posterior_leaflet_tip',x_frac: 0.62, y_frac: 0.55, group: 'mitral',    color: '#5fb8ff' },
+    // LV — cavity, walls, apex
+    { name: 'lv_apex',                x_frac: 0.15, y_frac: 0.72, group: 'lv',         color: '#5fd178' },
+    { name: 'lv_cavity_center',       x_frac: 0.35, y_frac: 0.65, group: 'lv',         color: '#5fd178' },
+    { name: 'septum_basal',           x_frac: 0.55, y_frac: 0.42, group: 'lv',         color: '#5fd178' },
+    { name: 'septum_mid',             x_frac: 0.42, y_frac: 0.55, group: 'lv',         color: '#5fd178' },
+    { name: 'septum_apical',          x_frac: 0.28, y_frac: 0.68, group: 'lv',         color: '#5fd178' },
+    { name: 'posterior_wall_basal',   x_frac: 0.60, y_frac: 0.80, group: 'lv',         color: '#5fd178' },
+    { name: 'posterior_wall_mid',     x_frac: 0.45, y_frac: 0.85, group: 'lv',         color: '#5fd178' },
+    { name: 'posterior_wall_apical',  x_frac: 0.28, y_frac: 0.88, group: 'lv',         color: '#5fd178' },
+    // Left atrium
+    { name: 'la_center',              x_frac: 0.78, y_frac: 0.55, group: 'la',         color: '#c88aff' },
+    { name: 'la_anterior_wall',       x_frac: 0.74, y_frac: 0.42, group: 'la',         color: '#c88aff' },
+    { name: 'la_posterior_wall',      x_frac: 0.82, y_frac: 0.70, group: 'la',         color: '#c88aff' },
+    // RVOT
+    { name: 'rvot_anterior',          x_frac: 0.50, y_frac: 0.12, group: 'rvot',       color: '#ffd45f' },
+    { name: 'rvot_center',            x_frac: 0.50, y_frac: 0.18, group: 'rvot',       color: '#ffd45f' },
+    // Pericardium / descending aorta
+    { name: 'descending_aorta',       x_frac: 0.80, y_frac: 0.60, group: 'reference',  color: '#ff9d5f' },
+    { name: 'pericardium_apex',       x_frac: 0.10, y_frac: 0.85, group: 'reference',  color: '#ff9d5f' },
+  ],
+};
+
+// Blank 5x5 grid — generic starting point for any image
+function buildGridPreset(n) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      out.push({
+        name: `grid_${i}_${j}`,
+        x_frac: (i + 0.5) / n,
+        y_frac: (j + 0.5) / n,
+        group: 'grid',
+        color: '#5f6fff',
+      });
+    }
+  }
+  return { description: `${n}x${n} uniform grid`, landmarks: out };
+}
+
+const BUILTIN_PRESETS = {
+  'PLAX (normal) — example: cardiac echo': PRESET_PLAX_NORMAL,
+};
+
+const $ = (id) => document.getElementById(id);
+
+// =====================================================================
+// INIT
+// =====================================================================
+window.addEventListener('load', () => {
+  bindUI();
+  loadBuiltInPresets();
+  setMode('edit');
+  setStatus('Drop an image to begin.', '');
+});
+
+function loadBuiltInPresets() {
+  for (const name of Object.keys(BUILTIN_PRESETS)) {
+    state.presets[name] = BUILTIN_PRESETS[name];
+  }
+  refreshPresetDropdown();
+}
+
+function refreshPresetDropdown() {
+  const sel = $('presetSelect');
+  const prev = sel.value;
+  const examplesGroup = $('optgroup-examples');
+  const userGroup = $('optgroup-user');
+  examplesGroup.innerHTML = '';
+  userGroup.innerHTML = '';
+
+  for (const name of Object.keys(state.presets)) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    if (BUILTIN_PRESETS[name]) {
+      examplesGroup.appendChild(opt);
+    } else {
+      userGroup.appendChild(opt);
+    }
+  }
+  // Restore selection if still valid, else clear
+  const allValues = Array.from(sel.querySelectorAll('option')).map(o => o.value);
+  sel.value = allValues.includes(prev) ? prev : '';
+  $('btnApplyPreset').disabled = !sel.value;
+  $('btnDeletePreset').disabled = !sel.value || !!BUILTIN_PRESETS[sel.value];
+  // (Examples can be deleted too — note: "Delete preset" works for both, with a warning for built-ins)
+  $('btnDeletePreset').disabled = !sel.value;
+  $('btnDeletePreset').textContent = BUILTIN_PRESETS[sel.value] ? 'Delete (built-in)' : 'Delete preset';
+}
+
+// =====================================================================
+// UI BINDING
+// =====================================================================
+function bindUI() {
+  // File inputs
+  $('btnLoadImg').onclick = () => $('fileImg').click();
+  $('btnLoadJson').onclick = () => $('fileJson').click();
+  $('fileImg').onchange = (e) => loadImageFile(e.target.files[0]);
+  $('fileJson').onchange = (e) => loadJsonFile(e.target.files[0]);
+  $('btnLoadPresetFile').onclick = () => $('filePreset').click();
+  $('filePreset').onchange = (e) => loadPresetFile(e.target.files[0]);
+
+  // Preset
+  $('presetSelect').onchange = (e) => {
+    $('btnApplyPreset').disabled = !e.target.value;
+    $('btnDeletePreset').disabled = !e.target.value;
+    $('btnDeletePreset').textContent = (e.target.value && BUILTIN_PRESETS[e.target.value]) ? 'Delete (built-in)' : 'Delete preset';
+  };
+  $('btnApplyPreset').onclick = () => {
+    const v = $('presetSelect').value;
+    if (!v) return;
+    if (v === '__blank__') { applySpecialPreset('blank'); return; }
+    const gm = v.match(/^__grid_(\d+)__$/);
+    if (gm) { applySpecialPreset('grid', parseInt(gm[1])); return; }
+    const am = v.match(/^__adaptive_(\d+)__$/);
+    if (am) { applySpecialPreset('adaptive', parseInt(am[1])); return; }
+    if (state.presets[v]) applyPreset(v);
+  };
+  $('btnReapplyPreset').onclick = () => {
+    if (state.activePreset) {
+      if (state.activePreset === '__blank__') { applySpecialPreset('blank', true); return; }
+      const gm = state.activePreset.match(/^__grid_(\d+)__$/);
+      if (gm) { applySpecialPreset('grid', parseInt(gm[1]), true); return; }
+      const am = state.activePreset.match(/^__adaptive_(\d+)__$/);
+      if (am) { applySpecialPreset('adaptive', parseInt(am[1]), true); return; }
+      applyPreset(state.activePreset, true);
+    } else {
+      setStatus('No active preset — apply one first.', 'warn');
+    }
+  };
+  $('btnSaveAsPreset').onclick = saveCurrentAsPreset;
+  $('btnDeletePreset').onclick = deleteSelectedPreset;
+  $('btnExportPresetFile').onclick = exportCurrentPresetFile;
+
+  // Drop zone
+  const wrap = $('stage-wrap');
+  wrap.addEventListener('dragover', (e) => { e.preventDefault(); $('dropzone').classList.add('drag-over'); });
+  wrap.addEventListener('dragleave', () => $('dropzone').classList.remove('drag-over'));
+  wrap.addEventListener('drop', (e) => {
+    e.preventDefault();
+    $('dropzone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (f.type.startsWith('image/')) loadImageFile(f);
+    else if (f.name.endsWith('.json')) loadJsonFile(f);
+  });
+
+  // Calibration
+  $('btnCalibrate').onclick = startCalibration;
+  $('btnClearCal').onclick = clearCalibration;
+
+  // Mode
+  $('btnEdit').onclick = () => setMode('edit');
+  $('btnPreview').onclick = () => setMode('preview');
+
+  // Display
+  $('showPoints').onchange = (e) => { state.showPoints = e.target.checked; render(); };
+  $('showLabels').onchange = (e) => { state.showLabels = e.target.checked; render(); };
+  $('showCurves').onchange = (e) => { state.showCurves = e.target.checked; render(); };
+  $('showGrid').onchange = (e) => { state.snapToGrid = e.target.checked; render(); };
+  $('gridSpacing').onchange = (e) => { state.gridSpacing = parseFloat(e.target.value) || 0.5; render(); };
+
+  // Landmarks
+  $('btnAddPoint').onclick = () => setStatus('Right-click on the image to place a point.', 'warn');
+  $('btnClearAll').onclick = () => {
+    if (state.landmarks.length === 0) return;
+    if (confirm(`Delete all ${state.landmarks.length} landmarks?`)) {
+      state.landmarks = []; state.selectedId = null; renderAll();
+    }
+  };
+
+  // Export
+  $('btnExportJson').onclick = exportJSON;
+  $('btnExportSvg').onclick = exportSVG;
+
+  // Canvas
+  $('overlaySvg').addEventListener('contextmenu', onContextMenu);
+  $('stage-wrap').addEventListener('contextmenu', (e) => {
+    if (e.target === $('stage-wrap') || e.target === $('dropzone')) {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, null);
+    }
+  });
+  $('stage-wrap').addEventListener('mousedown', onMouseDown);
+  $('stage-wrap').addEventListener('mousemove', onMouseMove);
+  $('stage-wrap').addEventListener('mouseup', onMouseUp);
+  $('stage-wrap').addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('keydown', onKey);
+  document.addEventListener('click', hideContextMenu);
+
+  // Hide context menu on any click
+  $('ctxmenu').addEventListener('click', (e) => e.stopPropagation());
+}
+
+function setMode(m) {
+  state.mode = m;
+  $('btnEdit').classList.toggle('active', m === 'edit');
+  $('btnPreview').classList.toggle('active', m === 'preview');
+  const badge = $('mode-badge');
+  badge.className = m;
+  badge.textContent = m.toUpperCase();
+  render();
+}
+
+// =====================================================================
+// IMAGE LOADING
+// =====================================================================
+function loadImageFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      state.image = img;
+      state.imageName = file.name;
+      state.imageDataUrl = e.target.result;
+      state.naturalW = img.naturalWidth;
+      state.naturalH = img.naturalHeight;
+      $('bgImg').src = e.target.result;
+      $('bgImg').width = state.naturalW;
+      $('bgImg').height = state.naturalH;
+      $('overlaySvg').setAttribute('width', state.naturalW);
+      $('overlaySvg').setAttribute('height', state.naturalH);
+      $('stage').style.width = state.naturalW + 'px';
+      $('stage').style.height = state.naturalH + 'px';
+      // Fit to viewport
+      fitToViewport();
+      $('dropzone').style.display = 'none';
+      $('btnAddPoint').disabled = false;
+      $('btnExportJson').disabled = false;
+      $('btnExportSvg').disabled = false;
+      setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
+      renderAll();
+      showWelcomeTip();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function fitToViewport() {
+  const wrap = $('stage-wrap').getBoundingClientRect();
+  const sx = (wrap.width - 20) / state.naturalW;
+  const sy = (wrap.height - 20) / state.naturalH;
+  state.scale = Math.min(sx, sy, 1);
+  state.panX = (wrap.width - state.naturalW * state.scale) / 2;
+  state.panY = (wrap.height - state.naturalH * state.scale) / 2;
+  applyTransform();
+}
+
+function applyTransform() {
+  $('stage').style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+}
+
+// =====================================================================
+// CALIBRATION
+// =====================================================================
+let calStep = 0; // 0=idle, 1=waiting-first, 2=waiting-second
+function startCalibration() {
+  calStep = 1;
+  state.calOrigin = null;
+  state.calSecond = null;
+  state.pxPerCm = null;
+  $('pxPerCm').value = '';
+  $('btnClearCal').disabled = false;
+  $('btnCalibrate').textContent = 'Click 1st point…';
+  $('btnCalibrate').classList.add('active');
+  setStatus('Calibration: click the FIRST point on a known distance (e.g., a depth scale marking).', 'warn');
+  render();
+}
+function clearCalibration() {
+  calStep = 0;
+  state.calOrigin = null;
+  state.calSecond = null;
+  state.pxPerCm = null;
+  $('pxPerCm').value = '';
+  $('btnClearCal').disabled = true;
+  $('btnCalibrate').textContent = 'Set scale';
+  $('btnCalibrate').classList.remove('active');
+  setStatus('Calibration cleared.', '');
+  render();
+}
+function finishCalibration() {
+  const dx = state.calSecond.x - state.calOrigin.x;
+  const dy = state.calSecond.y - state.calOrigin.y;
+  const distPx = Math.sqrt(dx*dx + dy*dy);
+  const input = prompt(`Distance between the two points (in cm):`, '5');
+  if (input === null) { clearCalibration(); return; }
+  const cm = parseFloat(input);
+  if (!cm || cm <= 0) { alert('Invalid distance.'); clearCalibration(); return; }
+  state.pxPerCm = distPx / cm;
+  $('pxPerCm').value = state.pxPerCm.toFixed(2);
+  calStep = 0;
+  $('btnCalibrate').textContent = 'Set scale';
+  $('btnCalibrate').classList.remove('active');
+  setStatus(`Calibration set: ${state.pxPerCm.toFixed(2)} px/cm`, 'ok');
+  render();
+}
+
+// =====================================================================
+// LANDMARKS
+// =====================================================================
+function addLandmark(x, y, name) {
+  if (state.snapToGrid && state.pxPerCm) {
+    const gridPx = state.pxPerCm * state.gridSpacing;
+    x = Math.round(x / gridPx) * gridPx;
+    y = Math.round(y / gridPx) * gridPx;
+  }
+  const lm = {
+    id: state.nextId++,
+    name: name || `lm_${String(state.nextId - 1).padStart(3, '0')}`,
+    type: 'point',
+    x, y,
+    color: COLORS[(state.landmarks.length) % COLORS.length],
+  };
+  state.landmarks.push(lm);
+  state.selectedId = lm.id;
+  renderAll();
+  return lm;
+}
+
+// =====================================================================
+// PRESET APPLICATION
+// =====================================================================
+function applyPreset(name, isReapply) {
+  const preset = state.presets[name];
+  if (!preset) { setStatus(`Preset "${name}" not found.`, 'err'); return; }
+  if (!state.image) { setStatus('Load an image first.', 'warn'); return; }
+
+  if (!isReapply) {
+    // Confirm replace if there are existing landmarks
+    if (state.landmarks.length > 0) {
+      if (!confirm(`Apply preset "${name}"? This will replace the ${state.landmarks.length} existing landmarks.`)) return;
+    }
+  }
+
+  // Wipe and re-place
+  state.landmarks = [];
+  state.presetLandmarkIds = {};
+  const W = state.naturalW, H = state.naturalH;
+  for (const def of preset.landmarks) {
+    const lm = {
+      id: state.nextId++,
+      name: def.name,
+      type: def.type || 'point',
+      x: def.x_frac * W,
+      y: def.y_frac * H,
+      color: def.color || COLORS[state.landmarks.length % COLORS.length],
+      group: def.group || null,
+    };
+    state.landmarks.push(lm);
+    state.presetLandmarkIds[def.name] = lm.id;
+  }
+  state.activePreset = name;
+  state.selectedId = null;
+  $('btnReapplyPreset').disabled = false;
+  $('btnSaveAsPreset').disabled = false;
+  renderAll();
+  setStatus(`Applied preset "${name}" — ${state.landmarks.length} landmarks placed. Drag any to adjust.`, 'ok');
+  showPresetTip(name, state.landmarks.length);
+}
+
+function saveCurrentAsPreset() {
+  if (state.landmarks.length === 0) { setStatus('No landmarks to save.', 'warn'); return; }
+  if (!state.image) { setStatus('Load an image first.', 'warn'); return; }
+  const name = prompt('Name for this preset:', 'my_preset');
+  if (!name) return;
+  if (state.presets[name] && !confirm(`Preset "${name}" already exists. Overwrite?`)) return;
+  const W = state.naturalW, H = state.naturalH;
+  state.presets[name] = {
+    description: `User preset saved ${new Date().toLocaleString()}`,
+    landmarks: state.landmarks.map(l => ({
+      name: l.name,
+      type: l.type,
+      x_frac: +(l.x / W).toFixed(4),
+      y_frac: +(l.y / H).toFixed(4),
+      color: l.color,
+      group: l.group || null,
+    })),
+  };
+  refreshPresetDropdown();
+  $('presetSelect').value = name;
+  setStatus(`Saved preset "${name}" with ${state.landmarks.length} landmarks.`, 'ok');
+}
+
+function loadPresetFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.landmarks && Array.isArray(data.landmarks)) {
+        // Validate shape
+        const ok = data.landmarks.every(l => typeof l.x_frac === 'number' && typeof l.y_frac === 'number');
+        if (!ok) { alert('Preset file is missing x_frac/y_frac on landmarks.'); return; }
+        const name = data.name || file.name.replace(/\.json$/i, '');
+        state.presets[name] = {
+          description: data.description || `Imported from ${file.name}`,
+          landmarks: data.landmarks,
+        };
+        refreshPresetDropdown();
+        $('presetSelect').value = name;
+        $('btnApplyPreset').disabled = false;
+        setStatus(`Loaded preset "${name}" with ${data.landmarks.length} landmarks. Click "Apply preset" to use it.`, 'ok');
+      } else {
+        alert('Preset JSON does not contain a landmarks array.');
+      }
+    } catch (err) {
+      alert('Failed to parse preset JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function applySpecialPreset(kind, n, isReapply) {
+  if (!state.image) { setStatus('Load an image first.', 'warn'); return; }
+  if (!isReapply && state.landmarks.length > 0) {
+    const label = kind === 'blank' ? 'blank (no landmarks)'
+      : kind === 'grid' ? `${n}×${n} uniform grid`
+      : `adaptive ${n} (centered)`;
+    if (!confirm(`Apply ${label}? This will replace the ${state.landmarks.length} existing landmarks.`)) return;
+  }
+  state.landmarks = [];
+  state.presetLandmarkIds = {};
+  const W = state.naturalW, H = state.naturalH;
+
+  if (kind === 'grid') {
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        state.landmarks.push(makeGridPoint(i, j, n, W, H));
+      }
+    }
+  } else if (kind === 'adaptive') {
+    // Centered weighted sampling: rows/columns closer to image center
+    // are spaced more densely. Uses a power curve p=2 — points cluster
+    // in the central 50% of the image, sparser at the periphery.
+    // Same total count as uniform n×n, just redistributed.
+    const positions = centeredSamples(n, 2.0);
+    let idx = 0;
+    for (const fy of positions) {
+      for (const fx of positions) {
+        const lm = {
+          id: state.nextId++,
+          name: `a_${idx++}`,
+          type: 'point',
+          x: fx * W,
+          y: fy * H,
+          color: '#5f6fff',
+          group: 'adaptive',
+        };
+        state.landmarks.push(lm);
+      }
+    }
+  }
+  // kind === 'blank' leaves zero landmarks
+
+  state.activePreset = kind === 'blank' ? '__blank__'
+    : kind === 'grid' ? `__grid_${n}__`
+    : `__adaptive_${n}__`;
+  state.selectedId = null;
+  $('btnReapplyPreset').disabled = false;
+  $('btnSaveAsPreset').disabled = state.landmarks.length === 0;
+  renderAll();
+  const count = state.landmarks.length;
+  const label = kind === 'blank' ? 'blank' : kind === 'grid' ? `${n}×${n} uniform grid` : `adaptive ${n} (centered)`;
+  setStatus(`Applied ${label} — ${count} landmark${count === 1 ? '' : 's'}.`, 'ok');
+  showPresetTip(state.activePreset, count);
+}
+
+function makeGridPoint(i, j, n, W, H) {
+  return {
+    id: state.nextId++,
+    name: `p_${i}_${j}`,
+    type: 'point',
+    x: ((i + 0.5) / n) * W,
+    y: ((j + 0.5) / n) * H,
+    color: '#5f6fff',
+    group: 'grid',
+  };
+}
+
+// Centered weighted sampling: returns n values in [0, 1] that are
+// denser near 0.5 (image center). Uses the formula
+//   t = 0.5 + sign(u - 0.5) * (1 - (1 - 2|u - 0.5|)^p) / 2
+// where p > 1 pulls samples toward 0.5.
+function centeredSamples(n, p) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const u = (i + 0.5) / n;          // uniform [0,1]
+    const d = Math.abs(u - 0.5) * 2;  // [0,1], 0 at center
+    const sign = u < 0.5 ? -1 : 1;
+    const t = 0.5 + sign * (1 - Math.pow(1 - d, p)) / 2;
+    out.push(Math.max(0, Math.min(1, t)));
+  }
+  return out;
+}
+
+function deleteSelectedPreset() {
+  const name = $('presetSelect').value;
+  if (!name) return;
+  if (name.startsWith('__')) { setStatus('Built-in options cannot be deleted.', 'warn'); return; }
+  const isBuiltIn = !!BUILTIN_PRESETS[name];
+  const msg = isBuiltIn
+    ? `Delete the built-in example preset "${name}"? You can re-add it by reloading the page.`
+    : `Delete preset "${name}"?`;
+  if (!confirm(msg)) return;
+  delete state.presets[name];
+  refreshPresetDropdown();
+  setStatus(`Deleted preset "${name}".`, 'ok');
+}
+
+function exportCurrentPresetFile() {
+  if (state.landmarks.length === 0) { setStatus('No landmarks to export.', 'warn'); return; }
+  if (!state.image) { setStatus('Load an image first.', 'warn'); return; }
+  const W = state.naturalW, H = state.naturalH;
+  const data = {
+    name: state.activePreset && !state.activePreset.startsWith('__')
+      ? state.activePreset
+      : (state.imageName.replace(/\.[^.]+$/, '') + '_preset'),
+    description: `Exported ${new Date().toLocaleString()}`,
+    landmarks: state.landmarks.map(l => ({
+      name: l.name,
+      type: l.type,
+      x_frac: +(l.x / W).toFixed(4),
+      y_frac: +(l.y / H).toFixed(4),
+      color: l.color,
+      group: l.group || null,
+    })),
+  };
+  download(JSON.stringify(data, null, 2), `${data.name}.preset.json`, 'application/json');
+  setStatus(`Exported preset "${data.name}" with ${data.landmarks.length} landmarks.`, 'ok');
+}
+
+function deleteLandmark(id) {
+  state.landmarks = state.landmarks.filter(l => l.id !== id);
+  if (state.selectedId === id) state.selectedId = null;
+  renderAll();
+}
+
+function selectLandmark(id) {
+  state.selectedId = id;
+  render();
+}
+
+function renameLandmark(id, newName) {
+  const lm = state.landmarks.find(l => l.id === id);
+  if (lm) { lm.name = newName || lm.name; renderAll(); }
+}
+
+function changeColor(id, color) {
+  const lm = state.landmarks.find(l => l.id === id);
+  if (lm) { lm.color = color; renderAll(); }
+}
+
+// =====================================================================
+// RENDERING
+// =====================================================================
+function renderAll() { renderList(); render(); }
+
+function render() {
+  renderLandmarks();
+  renderStatus();
+}
+
+function renderLandmarks() {
+  const svg = $('overlaySvg');
+  svg.innerHTML = '';
+
+  // Grid
+  if (state.snapToGrid && state.pxPerCm && state.image) {
+    const gridPx = state.pxPerCm * state.gridSpacing;
+    const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    gridGroup.setAttribute('opacity', '0.15');
+    for (let x = 0; x <= state.naturalW; x += gridPx) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x); line.setAttribute('y1', 0);
+      line.setAttribute('x2', x); line.setAttribute('y2', state.naturalH);
+      line.setAttribute('stroke', '#5fb8ff'); line.setAttribute('stroke-width', 0.5);
+      gridGroup.appendChild(line);
+    }
+    for (let y = 0; y <= state.naturalH; y += gridPx) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', 0); line.setAttribute('y1', y);
+      line.setAttribute('x2', state.naturalW); line.setAttribute('y2', y);
+      line.setAttribute('stroke', '#5fb8ff'); line.setAttribute('stroke-width', 0.5);
+      gridGroup.appendChild(line);
+    }
+    svg.appendChild(gridGroup);
+  }
+
+  // Calibration visualization
+  if (state.calOrigin || state.calSecond) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    if (state.calOrigin) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', state.calOrigin.x); c.setAttribute('cy', state.calOrigin.y); c.setAttribute('r', 6);
+      c.setAttribute('class', 'cal-point'); g.appendChild(c);
+    }
+    if (state.calSecond) {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', state.calSecond.x); c.setAttribute('cy', state.calSecond.y); c.setAttribute('r', 6);
+      c.setAttribute('class', 'cal-point'); g.appendChild(c);
+      if (state.calOrigin) {
+        const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        l.setAttribute('x1', state.calOrigin.x); l.setAttribute('y1', state.calOrigin.y);
+        l.setAttribute('x2', state.calSecond.x); l.setAttribute('y2', state.calSecond.y);
+        l.setAttribute('class', 'cal-line'); g.appendChild(l);
+      }
+    }
+    svg.appendChild(g);
+  }
+
+  // Landmarks
+  const isPreview = state.mode === 'preview';
+  const r = isPreview ? 2 : 7;
+  for (const lm of state.landmarks) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'interactive landmark-group');
+    g.dataset.id = lm.id;
+
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', lm.x); c.setAttribute('cy', lm.y);
+    c.setAttribute('r', state.selectedId === lm.id ? r + 3 : r);
+    c.setAttribute('fill', lm.color);
+    c.setAttribute('stroke', state.selectedId === lm.id ? '#ffffff' : '#000000');
+    c.setAttribute('stroke-width', state.selectedId === lm.id ? 2 : 1);
+    if (isPreview) c.setAttribute('opacity', 0.6);
+    g.appendChild(c);
+
+    if (state.showLabels && !isPreview) {
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', lm.x + r + 4);
+      t.setAttribute('y', lm.y - r - 2);
+      t.setAttribute('fill', lm.color);
+      t.setAttribute('font-size', '11');
+      t.setAttribute('font-family', 'ui-monospace, monospace');
+      t.setAttribute('paint-order', 'stroke');
+      t.setAttribute('stroke', '#000000');
+      t.setAttribute('stroke-width', '3');
+      t.textContent = lm.name;
+      g.appendChild(t);
+    }
+    svg.appendChild(g);
+  }
+}
+
+function renderList() {
+  const list = $('lmList');
+  list.innerHTML = '';
+  for (const lm of state.landmarks) {
+    const li = document.createElement('li');
+    if (state.selectedId === lm.id) li.classList.add('selected');
+    li.dataset.id = lm.id;
+
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = lm.color;
+    li.appendChild(sw);
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = lm.name;
+    name.ondblclick = () => {
+      const n = prompt('Rename landmark:', lm.name);
+      if (n !== null) renameLandmark(lm.id, n);
+    };
+    li.appendChild(name);
+
+    const coords = document.createElement('span');
+    coords.className = 'coords';
+    coords.textContent = state.pxPerCm
+      ? `(${(lm.x/state.pxPerCm).toFixed(2)}, ${(lm.y/state.pxPerCm).toFixed(2)}) cm`
+      : `(${Math.round(lm.x)}, ${Math.round(lm.y)})`;
+    li.appendChild(coords);
+
+    const del = document.createElement('button');
+    del.className = 'del';
+    del.textContent = '×';
+    del.title = 'Delete';
+    del.onclick = (e) => { e.stopPropagation(); deleteLandmark(lm.id); };
+    li.appendChild(del);
+
+    li.onclick = () => selectLandmark(lm.id);
+    list.appendChild(li);
+  }
+  $('lmCount').textContent = `(${state.landmarks.length})`;
+  $('btnClearAll').disabled = state.landmarks.length === 0;
+}
+
+function renderStatus() {
+  if (!state.image) {
+    $('statusLeft').textContent = 'No image loaded';
+    $('statusRight').textContent = '';
+    return;
+  }
+  $('statusLeft').textContent = `${state.naturalW}×${state.naturalH}px · zoom ${(state.scale*100).toFixed(0)}%`;
+  if (state.pxPerCm) {
+    $('statusRight').innerHTML = `<span class="ok">calibrated ${state.pxPerCm.toFixed(2)} px/cm</span> · ${state.landmarks.length} landmarks`;
+  } else {
+    $('statusRight').innerHTML = `<span class="warn">not calibrated</span> · ${state.landmarks.length} landmarks`;
+  }
+}
+
+function setStatus(msg, kind) {
+  $('statusLeft').innerHTML = kind ? `<span class="${kind}">${msg}</span>` : msg;
+}
+
+// =====================================================================
+// FIRST-TIME WELCOME — shown after image load, before any preset applied
+// =====================================================================
+const WELCOME_KEY = 'landmarkTool.welcomeDismissed';
+function showWelcomeTip() {
+  if (localStorage.getItem(WELCOME_KEY) === '1') return;
+  if (state.landmarks.length > 0) return; // already placed something
+  const tip = $('presetTip');
+  tip.innerHTML = `
+    <span class="tip-dismiss" title="Dismiss (won't show again)">×</span>
+    <strong>Welcome.</strong> Pick a starting point from the dropdown above:
+    <ul style="margin:6px 0 4px 18px;padding:0;">
+      <li><strong>Blank</strong> — start from scratch (place every point by hand)</li>
+      <li><strong>Grid N×N</strong> — evenly-spaced points across the image</li>
+      <li><strong>Adaptive N</strong> — denser in center, sparser at edges (good for typical reference images)</li>
+      <li><strong>PLAX (example)</strong> — built-in example preset for cardiac echo</li>
+    </ul>
+    Then click <strong>Apply preset</strong>. Drag any misaligned point to fine-tune. Right-click empty space to add new points, right-click an existing point to rename or delete. When done, click <strong>Save current as preset…</strong> to reuse the placement on similar images.
+  `;
+  tip.style.display = 'block';
+  tip.querySelector('.tip-dismiss').onclick = () => {
+    tip.style.display = 'none';
+    localStorage.setItem(WELCOME_KEY, '1');
+  };
+}
+
+// =====================================================================
+// CONTEXTUAL TIPS — appear after preset application to guide the user
+// =====================================================================
+function showPresetTip(presetKey, count) {
+  const tip = $('presetTip');
+  let html = '';
+  let actionValue = null;
+  let actionLabel = null;
+
+  if (presetKey === '__blank__') {
+    html = `<strong>Blank canvas.</strong> Right-click anywhere on the image to add your first landmark. Name it (e.g., "ao_root", "mv_tip"). When you've placed all the landmarks you need, click <strong>Save current as preset…</strong> to reuse them on similar images.`;
+  } else if (presetKey === '__grid_3__') {
+    html = `<strong>3×3 grid placed (9 points).</strong> Drag any point onto the structure it should mark. For more coverage, try <strong>Grid 5×5</strong> or <strong>Adaptive 7</strong> from the dropdown.`;
+    actionValue = '__grid_5__'; actionLabel = 'Switch to Grid 5×5';
+  } else if (presetKey === '__grid_5__') {
+    html = `<strong>5×5 grid placed (25 points).</strong> Drag misaligned points onto structures. For finer coverage, try <strong>Grid 7×7</strong>. For denser center / sparser edges, try <strong>Adaptive 7</strong>.`;
+    actionValue = '__grid_7__'; actionLabel = 'Switch to Grid 7×7';
+  } else if (presetKey === '__grid_7__') {
+    html = `<strong>7×7 grid placed (49 points).</strong> Drag misaligned points onto structures. For dense fine-grained placement, try <strong>Grid 10×10</strong>. For center-weighted coverage, try <strong>Adaptive 7</strong> or <strong>Adaptive 9</strong>.`;
+    actionValue = '__adaptive_7__'; actionLabel = 'Switch to Adaptive 7';
+  } else if (presetKey === '__grid_10__') {
+    html = `<strong>10×10 grid placed (100 points).</strong> Dense coverage — fine for detailed images. Delete points in empty regions. For center-weighted coverage, try <strong>Adaptive 9</strong>.`;
+    actionValue = '__adaptive_9__'; actionLabel = 'Switch to Adaptive 9';
+  } else if (presetKey === '__adaptive_5__') {
+    html = `<strong>Adaptive 5 placed (25 points, denser in center).</strong> Drag misaligned points. For more detail, try <strong>Adaptive 7</strong>. For uniform spacing instead, try <strong>Grid 5×5</strong>.`;
+    actionValue = '__adaptive_7__'; actionLabel = 'Switch to Adaptive 7';
+  } else if (presetKey === '__adaptive_7__') {
+    html = `<strong>Adaptive 7 placed (49 points, denser in center).</strong> Recommended for typical reference images. Drag misaligned points. If you need finer detail, try <strong>Adaptive 9</strong>.`;
+    actionValue = '__adaptive_9__'; actionLabel = 'Switch to Adaptive 9';
+  } else if (presetKey === '__adaptive_9__') {
+    html = `<strong>Adaptive 9 placed (81 points, denser in center).</strong> Finest adaptive option. Drag misaligned points. If too cluttered, drop to <strong>Adaptive 7</strong> or <strong>Adaptive 5</strong>.`;
+    actionValue = '__adaptive_7__'; actionLabel = 'Switch to Adaptive 7';
+  } else if (BUILTIN_PRESETS[presetKey]) {
+    html = `<strong>Example preset applied.</strong> This is a built-in starting point — drag any misaligned points onto the actual structures. When you're happy with the placement, click <strong>Save current as preset…</strong> to keep your version.`;
+  } else {
+    // User-saved preset
+    html = `<strong>Preset "${presetKey}" applied (${count} landmarks).</strong> Drag any misaligned points to fine-tune. Click <strong>Re-apply</strong> to reset to this preset's default positions. To save your changes as a new preset, use <strong>Save current as preset…</strong>`;
+  }
+
+  if (actionValue && actionLabel) {
+    html += `<div class="tip-action" data-action="${actionValue}">→ ${actionLabel}</div>`;
+  }
+  tip.innerHTML = `<span class="tip-dismiss" title="Dismiss">×</span>${html}`;
+  tip.style.display = 'block';
+  tip.querySelector('.tip-dismiss').onclick = () => { tip.style.display = 'none'; };
+  const action = tip.querySelector('.tip-action');
+  if (action) {
+    action.onclick = () => {
+      $('presetSelect').value = action.dataset.action;
+      $('btnApplyPreset').disabled = false;
+      $('btnApplyPreset').click();
+    };
+  }
+}
+
+function hidePresetTip() {
+  $('presetTip').style.display = 'none';
+}
+
+// =====================================================================
+// MOUSE / ZOOM / PAN
+// =====================================================================
+let dragState = null;
+
+function screenToImage(clientX, clientY) {
+  const rect = $('stage').getBoundingClientRect();
+  const x = (clientX - rect.left) / state.scale;
+  const y = (clientY - rect.top) / state.scale;
+  return { x, y };
+}
+
+function onMouseDown(e) {
+  hideContextMenu();
+  if (e.button === 2) return; // right-click handled by contextmenu event
+  if (calStep === 1) {
+    const p = screenToImage(e.clientX, e.clientY);
+    state.calOrigin = p;
+    calStep = 2;
+    $('btnCalibrate').textContent = 'Click 2nd point…';
+    setStatus('Calibration: click the SECOND point at the other end of the known distance.', 'warn');
+    render();
+    return;
+  }
+  if (calStep === 2) {
+    const p = screenToImage(e.clientX, e.clientY);
+    state.calSecond = p;
+    finishCalibration();
+    return;
+  }
+
+  // Pan with alt
+  if (e.altKey || e.button === 1) {
+    dragState = { kind: 'pan', startX: e.clientX, startY: e.clientY, panX: state.panX, panY: state.panY };
+    return;
+  }
+
+  // Drag a landmark?
+  const target = e.target.closest('.landmark-group');
+  if (target && state.mode === 'edit') {
+    const id = parseInt(target.dataset.id);
+    selectLandmark(id);
+    const lm = state.landmarks.find(l => l.id === id);
+    const p = screenToImage(e.clientX, e.clientY);
+    dragState = { kind: 'lm', id, offsetX: p.x - lm.x, offsetY: p.y - lm.y };
+    target.classList.add('dragging');
+  }
+}
+
+function onMouseMove(e) {
+  if (!dragState) return;
+  if (dragState.kind === 'pan') {
+    state.panX = dragState.panX + (e.clientX - dragState.startX);
+    state.panY = dragState.panY + (e.clientY - dragState.startY);
+    applyTransform();
+  } else if (dragState.kind === 'lm') {
+    const p = screenToImage(e.clientX, e.clientY);
+    const lm = state.landmarks.find(l => l.id === dragState.id);
+    if (lm) {
+      lm.x = p.x - dragState.offsetX;
+      lm.y = p.y - dragState.offsetY;
+      if (state.snapToGrid && state.pxPerCm) {
+        const gridPx = state.pxPerCm * state.gridSpacing;
+        lm.x = Math.round(lm.x / gridPx) * gridPx;
+        lm.y = Math.round(lm.y / gridPx) * gridPx;
+      }
+      render();
+      renderList();
+    }
+  }
+}
+
+function onMouseUp(e) {
+  if (dragState) {
+    const target = document.querySelector(`.landmark-group[data-id="${dragState.id}"]`);
+    if (target) target.classList.remove('dragging');
+    dragState = null;
+  }
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  const rect = $('stage').getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+  const newScale = Math.max(0.1, Math.min(20, state.scale * factor));
+  // Zoom about mouse
+  state.panX = mx - (mx - state.panX) * (newScale / state.scale);
+  state.panY = my - (my - state.panY) * (newScale / state.scale);
+  state.scale = newScale;
+  applyTransform();
+  renderStatus();
+}
+
+// =====================================================================
+// CONTEXT MENU
+// =====================================================================
+function onContextMenu(e) {
+  e.preventDefault();
+  const target = e.target.closest('.landmark-group');
+  if (target) {
+    showContextMenu(e.clientX, e.clientY, parseInt(target.dataset.id));
+  } else {
+    showContextMenu(e.clientX, e.clientY, null);
+  }
+}
+
+function showContextMenu(x, y, id) {
+  const menu = $('ctxmenu');
+  menu.innerHTML = '';
+  if (id) {
+    const lm = state.landmarks.find(l => l.id === id);
+    addMenuItem(menu, `Rename "${lm.name}"`, () => {
+      const n = prompt('New name:', lm.name);
+      if (n !== null) renameLandmark(id, n);
+    });
+    addMenuItem(menu, 'Change color…', () => {
+      const c = prompt('Color (hex, e.g. #5fd178):', lm.color);
+      if (c) changeColor(id, c);
+    });
+    addMenuSep(menu);
+    addMenuItem(menu, 'Delete landmark', () => deleteLandmark(id), true);
+  } else {
+    addMenuItem(menu, '➕ Add point here', () => {
+      const p = screenToImage(x, y);
+      const lm = addLandmark(p.x, p.y);
+      const n = prompt('Name (or leave blank):', '');
+      if (n) renameLandmark(lm.id, n);
+    });
+  }
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.style.display = 'block';
+}
+function addMenuItem(menu, label, onClick, danger) {
+  const d = document.createElement('div');
+  d.className = 'item';
+  d.textContent = label;
+  if (danger) d.style.color = '#ff8088';
+  d.onclick = () => { onClick(); hideContextMenu(); };
+  menu.appendChild(d);
+}
+function addMenuSep(menu) {
+  const d = document.createElement('div');
+  d.className = 'sep';
+  menu.appendChild(d);
+}
+function hideContextMenu() { $('ctxmenu').style.display = 'none'; }
+
+// =====================================================================
+// KEYBOARD
+// =====================================================================
+function onKey(e) {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (state.selectedId && document.activeElement.tagName !== 'INPUT') {
+      deleteLandmark(state.selectedId);
+      e.preventDefault();
+    }
+  }
+  if (e.key === 'Escape') {
+    if (calStep) clearCalibration();
+    state.selectedId = null;
+    render();
+  }
+}
+
+// =====================================================================
+// EXPORT
+// =====================================================================
+function buildExportData() {
+  return {
+    tool: 'landmark-tool',
+    version: '1.0',
+    image: {
+      name: state.imageName,
+      width: state.naturalW,
+      height: state.naturalH,
+    },
+    calibration: state.pxPerCm ? { pxPerCm: state.pxPerCm } : null,
+    landmarks: state.landmarks.map(l => ({
+      id: l.id,
+      name: l.name,
+      type: l.type,
+      x: +l.x.toFixed(2),
+      y: +l.y.toFixed(2),
+      color: l.color,
+      x_cm: state.pxPerCm ? +(l.x / state.pxPerCm).toFixed(3) : null,
+      y_cm: state.pxPerCm ? +(l.y / state.pxPerCm).toFixed(3) : null,
+    })),
+    exportedAt: new Date().toISOString(),
+  };
+}
+
+function exportJSON() {
+  const data = buildExportData();
+  download(JSON.stringify(data, null, 2), `${state.imageName || 'landmarks'}.landmarks.json`, 'application/json');
+  setStatus(`Exported ${data.landmarks.length} landmarks to JSON.`, 'ok');
+}
+
+function exportSVG() {
+  if (!state.image) return;
+  const w = state.naturalW, h = state.naturalH;
+  const parts = [];
+  parts.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+  // Embedded image
+  parts.push(`  <image x="0" y="0" width="${w}" height="${h}" xlink:href="${state.imageDataUrl}"/>`);
+  // Landmarks
+  for (const lm of state.landmarks) {
+    parts.push(`  <g class="landmark" data-id="${lm.id}" data-name="${escapeXml(lm.name)}">`);
+    parts.push(`    <circle cx="${lm.x.toFixed(2)}" cy="${lm.y.toFixed(2)}" r="6" fill="${lm.color}" stroke="black" stroke-width="1"/>`);
+    parts.push(`    <text x="${(lm.x + 10).toFixed(2)}" y="${(lm.y - 8).toFixed(2)}" fill="${lm.color}" font-size="12" font-family="monospace" stroke="black" stroke-width="3" paint-order="stroke">${escapeXml(lm.name)}</text>`);
+    parts.push(`  </g>`);
+  }
+  parts.push(`</svg>`);
+  download(parts.join('\n'), `${state.imageName || 'image'}.landmarks.svg`, 'image/svg+xml');
+  setStatus(`Exported ${state.landmarks.length} landmarks to SVG.`, 'ok');
+}
+
+function escapeXml(s) {
+  return String(s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'}[c]));
+}
+
+function download(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+// =====================================================================
+// JSON IMPORT (for editing existing landmark sets)
+// =====================================================================
+function loadJsonFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data.landmarks && Array.isArray(data.landmarks)) {
+        state.landmarks = data.landmarks.map(l => ({
+          id: l.id || state.nextId++,
+          name: l.name,
+          type: l.type || 'point',
+          x: l.x, y: l.y,
+          color: l.color || COLORS[state.landmarks.length % COLORS.length],
+        }));
+        state.nextId = Math.max(state.nextId, ...state.landmarks.map(l => l.id + 1));
+        if (data.calibration && data.calibration.pxPerCm) {
+          state.pxPerCm = data.calibration.pxPerCm;
+          $('pxPerCm').value = state.pxPerCm.toFixed(2);
+          $('btnClearCal').disabled = false;
+        }
+        renderAll();
+        setStatus(`Loaded ${state.landmarks.length} landmarks from ${file.name}.`, 'ok');
+      } else {
+        alert('JSON does not contain a landmarks array.');
+      }
+    } catch (err) {
+      alert('Failed to parse JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+</script>
+</body>
+</html>
