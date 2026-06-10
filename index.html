@@ -65,6 +65,9 @@
   #btnEraser.active {
     background: #c44; border-color: #c44; color: white;
   }
+  #btnTrace.active {
+    background: #2c8aff; border-color: #2c8aff; color: white;
+  }
   /* Cursor when eraser is active */
   body.eraser-active #stage-wrap { cursor: none; }
 
@@ -161,6 +164,23 @@
     background: #c44; color: white;
     padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500;
     z-index: 12; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  /* Trace mode banner */
+  .trace-badge {
+    position: absolute;
+    top: 10px; left: 50%; transform: translateX(-50%);
+    background: #2c8aff; color: white;
+    padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500;
+    z-index: 12; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  /* Trace cursor (crosshair when trace is active) */
+  body.trace-active #stage-wrap { cursor: crosshair; }
+
+  /* Trace preview line (drawn over the image as the user drags) */
+  #tracePreview {
+    position: absolute; pointer-events: none; z-index: 11;
   }
 
   /* Eraser brush cursor (SVG circle following the mouse) */
@@ -351,15 +371,25 @@
         <h2>Landmarks <span id="lmCount" style="color:#5a5a62">(0)</span></h2>
         <div class="btn-row">
           <button id="btnEraser" disabled title="Eraser mode: click and drag across points to delete them. Adjust brush size below. Press Esc to exit.">🩹 Eraser</button>
-          <button id="btnUndoErase" class="danger" disabled title="Restore the last batch of points deleted by the eraser">↶ Undo erase</button>
+          <button id="btnTrace" disabled title="Trace mode: click and drag along a structure to drop points at regular intervals. Adjust interval below. Press Esc to exit.">✏️ Trace</button>
+          <button id="btnUndoErase" class="danger" disabled title="Restore the last batch of points deleted by the eraser (or trace)">↶ Undo</button>
         </div>
         <div class="row" style="margin-top:6px">
-          <label>Brush size</label>
+          <label>Eraser</label>
           <select id="eraserSizeSel">
             <option value="10">10 px (small)</option>
             <option value="20" selected>20 px (medium)</option>
             <option value="40">40 px (large)</option>
             <option value="80">80 px (huge)</option>
+          </select>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>Trace int</label>
+          <select id="traceIntervalSel">
+            <option value="10">10 px (dense)</option>
+            <option value="20" selected>20 px (medium)</option>
+            <option value="40">40 px (sparse)</option>
+            <option value="80">80 px (very sparse)</option>
           </select>
         </div>
         <div class="btn-row" style="margin-top:6px">
@@ -425,10 +455,15 @@
         <circle class="outer" cx="100" cy="100" r="20" />
         <circle class="inner" cx="100" cy="100" r="3" />
       </svg>
+      <svg id="tracePreview" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+        <path id="tracePreviewPath" d="" fill="none" stroke="#2c8aff" stroke-width="2" stroke-dasharray="4 3" opacity="0.9" />
+        <circle id="tracePreviewDot" cx="0" cy="0" r="4" fill="#2c8aff" stroke="white" stroke-width="1" opacity="0" />
+      </svg>
     </div>
     <div id="mode-badge" class="editing">EDIT</div>
     <div id="edgeBadge" class="edge-badge edge-badge-idle">Edge map: not computed</div>
     <div id="eraserBadge" class="eraser-badge" style="display:none">🩹 Eraser mode — click and drag to delete points · Esc to exit</div>
+    <div id="traceBadge" class="trace-badge" style="display:none">✏️ Trace mode — click and drag along a structure to drop points · Esc to exit</div>
     <div id="status">
       <span id="statusLeft">No image loaded</span>
       <span id="statusRight"></span>
@@ -476,6 +511,14 @@ const state = {
   eraserActive: false,     // true when eraser mode is on
   eraserRadius: 20,        // brush size in pixels
   eraserLastSweep: null,   // [{id, name, x, y, color, group}] — points removed in last sweep (for undo)
+  // Trace tool
+  traceActive: false,      // true when trace mode is on
+  traceInterval: 20,       // min distance (px) between placed points during a trace
+  traceLastPoint: null,    // {x, y} last point placed in current trace
+  tracePreview: [],        // [{x, y}] raw path of current trace (mouse positions)
+  tracePoints: [],         // [{x, y, snapped}] points placed in current trace
+  traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
+  traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -764,7 +807,17 @@ function bindUI() {
     state.eraserRadius = parseInt(e.target.value) || 20;
     updateEraserCursor();
   };
-  $('btnUndoErase').onclick = undoLastErase;
+  $('btnUndoErase').onclick = () => {
+    if (state.eraserLastSweep && state.eraserLastSweep.length > 0) {
+      undoLastErase();
+    }
+  };
+
+  // Trace
+  $('btnTrace').onclick = () => setTraceActive(!state.traceActive);
+  $('traceIntervalSel').onchange = (e) => {
+    state.traceInterval = parseInt(e.target.value) || 20;
+  };
 
   // Export
   $('btnExportJson').onclick = exportJSON;
@@ -829,6 +882,7 @@ function loadImageFile(file) {
       $('btnComputeEdges').disabled = false;
       $('btnSnapAll').disabled = false;
       $('btnEraser').disabled = false;
+      $('btnTrace').disabled = false;
       // Reset edge map for new image
       state.edgeMap = null;
       state.edgeW = state.edgeH = 0;
@@ -837,7 +891,11 @@ function loadImageFile(file) {
       setEdgeStatus('idle', 'Edge map: not computed');
       // Exit eraser mode if active
       if (state.eraserActive) setEraserActive(false);
+      // Exit trace mode if active
+      if (state.traceActive) setTraceActive(false);
       state.eraserLastSweep = null;
+      state.traceLastBatch = null;
+      state.traceBatchCounter = 0;
       $('btnUndoErase').disabled = true;
       setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
       renderAll();
@@ -1714,6 +1772,143 @@ function undoLastErase() {
   renderAll();
 }
 
+// =====================================================================
+// TRACE TOOL — click and drag along a structure to drop points
+// at regular intervals. Each point auto-snaps to the nearest edge.
+// =====================================================================
+function setTraceActive(active) {
+  // Trace and eraser are mutually exclusive
+  if (active && state.eraserActive) setEraserActive(false);
+  state.traceActive = active;
+  document.body.classList.toggle('trace-active', active);
+  $('btnTrace').classList.toggle('active', active);
+  $('traceBadge').style.display = active ? 'block' : 'none';
+  // Position the trace preview SVG over the image
+  sizeTracePreview();
+  if (active) {
+    setStatus('Trace mode ON — click and drag to drop points along a structure.', 'warn');
+  } else {
+    setStatus('Trace mode OFF.', '');
+    clearTracePreview();
+  }
+}
+
+function sizeTracePreview() {
+  const preview = $('tracePreview');
+  if (!preview) return;
+  if (state.image) {
+    preview.setAttribute('width', state.naturalW);
+    preview.setAttribute('height', state.naturalH);
+    preview.style.width = state.naturalW + 'px';
+    preview.style.height = state.naturalH + 'px';
+  }
+}
+
+function clearTracePreview() {
+  const path = $('tracePreviewPath');
+  const dot = $('tracePreviewDot');
+  if (path) path.setAttribute('d', '');
+  if (dot) dot.setAttribute('opacity', '0');
+  state.tracePreview = [];
+  state.traceLastPoint = null;
+}
+
+function beginTrace(x, y) {
+  // Called on mousedown. Set up state for a new trace.
+  state.tracePreview = [{ x, y }];
+  state.tracePoints = [];
+  state.traceLastPoint = null;
+  // Place the first point immediately
+  addTracePoint(x, y, true);
+  // Update preview
+  updateTracePreview();
+}
+
+function continueTrace(x, y) {
+  // Called on mousemove. Add to preview; place a new point if we've moved
+  // far enough since the last placed point.
+  state.tracePreview.push({ x, y });
+  // Check if we should place a new point
+  if (state.traceLastPoint === null) {
+    addTracePoint(x, y, false);
+  } else {
+    const dx = x - state.traceLastPoint.x;
+    const dy = y - state.traceLastPoint.y;
+    if (dx * dx + dy * dy >= state.traceInterval * state.traceInterval) {
+      addTracePoint(x, y, false);
+    }
+  }
+  updateTracePreview();
+}
+
+function endTrace() {
+  // Called on mouseup. Finalize the batch for undo.
+  if (state.tracePoints.length === 0) {
+    clearTracePreview();
+    return;
+  }
+  state.traceLastBatch = state.tracePoints.slice();
+  state.traceLastSweep = state.traceLastBatch; // reuse undo button
+  $('btnUndoErase').disabled = false;
+  const count = state.tracePoints.length;
+  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all.`, 'warn');
+  state.tracePoints = [];
+  state.tracePreview = [];
+  state.traceLastPoint = null;
+  // Clear the preview path
+  clearTracePreview();
+  renderAll();
+}
+
+function addTracePoint(x, y, isFirst) {
+  // Auto-snap to nearest edge if enabled
+  let px = x, py = y;
+  if (state.snapEnabled && state.edgeReady) {
+    const result = snapToNearestEdge(x, y, state.snapRadius);
+    if (result.magnitude > 0) {
+      px = result.x;
+      py = result.y;
+    }
+  }
+  // Increment batch counter and name
+  state.traceBatchCounter++;
+  const name = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
+  const lm = {
+    id: state.nextId++,
+    name,
+    type: 'point',
+    x: px,
+    y: py,
+    color: '#2c8aff',
+    group: 'trace',
+  };
+  state.landmarks.push(lm);
+  state.tracePoints.push(lm);
+  state.traceLastPoint = { x: px, y: py };
+}
+
+function updateTracePreview() {
+  const path = $('tracePreviewPath');
+  const dot = $('tracePreviewDot');
+  if (!path || !dot) return;
+  if (state.tracePreview.length < 2) {
+    path.setAttribute('d', '');
+    dot.setAttribute('opacity', '0');
+    return;
+  }
+  // Build SVG path d attribute
+  let d = `M ${state.tracePreview[0].x.toFixed(2)} ${state.tracePreview[0].y.toFixed(2)}`;
+  for (let i = 1; i < state.tracePreview.length; i++) {
+    d += ` L ${state.tracePreview[i].x.toFixed(2)} ${state.tracePreview[i].y.toFixed(2)}`;
+  }
+  path.setAttribute('d', d);
+  // Show dot at last preview position
+  const last = state.tracePreview[state.tracePreview.length - 1];
+  dot.setAttribute('cx', last.x);
+  dot.setAttribute('cy', last.y);
+  dot.setAttribute('opacity', '1');
+}
+
 function selectLandmark(id) {
   state.selectedId = id;
   render();
@@ -2081,6 +2276,15 @@ function onMouseDown(e) {
     return;
   }
 
+  // Trace mode: click and drag to drop points along the path
+  if (state.traceActive) {
+    const p = screenToImage(e.clientX, e.clientY);
+    beginTrace(p.x, p.y);
+    dragState = { kind: 'trace' };
+    render();
+    return;
+  }
+
   // Drag a landmark?
   const target = e.target.closest('.landmark-group');
   if (target && state.mode === 'edit') {
@@ -2132,6 +2336,10 @@ function onMouseMove(e) {
       dragState.lastX = p.x;
       dragState.lastY = p.y;
     }
+  } else if (dragState.kind === 'trace') {
+    // Continuously drop points as the user drags
+    const p = screenToImage(e.clientX, e.clientY);
+    continueTrace(p.x, p.y);
   }
 }
 
@@ -2144,8 +2352,11 @@ function onMouseUp(e) {
     if (dragState.kind === 'eraser' && state.eraserLastSweep) {
       const count = state.eraserLastSweep.length;
       if (count > 0) {
-        setStatus(`Eraser sweep: deleted ${count} landmark${count === 1 ? '' : 's'}. Click ↶ Undo erase to restore.`, 'warn');
+        setStatus(`Eraser sweep: deleted ${count} landmark${count === 1 ? '' : 's'}. Click ↶ Undo to restore.`, 'warn');
       }
+    }
+    if (dragState.kind === 'trace') {
+      endTrace();
     }
     dragState = null;
   }
@@ -2237,11 +2448,16 @@ function onKey(e) {
       e.preventDefault();
       return;
     }
+    if (state.traceActive) {
+      setTraceActive(false);
+      e.preventDefault();
+      return;
+    }
     if (calStep) clearCalibration();
     state.selectedId = null;
     render();
   }
-  // Ctrl+Z / Cmd+Z: undo last eraser sweep
+  // Ctrl+Z / Cmd+Z: undo last eraser/trace sweep
   if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) {
     if (state.eraserLastSweep && state.eraserLastSweep.length > 0) {
       undoLastErase();
