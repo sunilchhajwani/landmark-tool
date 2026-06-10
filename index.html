@@ -395,9 +395,9 @@
         <div class="row" style="margin-top:6px">
           <label>Snap mode</label>
           <select id="traceSnapModeSel">
-            <option value="off" selected>Off (exact path)</option>
-            <option value="path">Path strip (recommended)</option>
+            <option value="path" selected>Path (recommended)</option>
             <option value="radius">Radius (old)</option>
+            <option value="off">Off (exact path)</option>
           </select>
         </div>
         <div class="row" style="margin-top:6px">
@@ -537,7 +537,7 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
-  traceSnapMode: 'off',    // 'off' (exact path, no snap), 'path' (perpendicular strip), or 'radius' (circular)
+  traceSnapMode: 'path',   // 'path' (snap to perpendicular strip along path), 'radius' (circular search), or 'off' (no snap, exact trace position)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
 };
 
@@ -1922,17 +1922,17 @@ function addTracePoint(x, y, isFirst) {
       // unrelated edges (e.g., the opposite wall, a noise spike) — the
       // search is constrained to edges along the path direction.
       result = snapToNearestEdgeAlongPath(x, y, state.traceSnapWidth);
-    } else if (state.traceSnapMode === 'radius') {
+    } else {
       // Original circular search
       result = snapToNearestEdge(x, y, state.snapRadius);
     }
-    if (result && result.magnitude > 0) {
+    if (result.magnitude > 0) {
       px = result.x;
       py = result.y;
     }
   }
-  // If traceSnapMode === 'off' OR no edge found, points land exactly
-  // on the path the user traced (px = x, py = y).
+  // When snap mode is 'off' (or snap is disabled / edge map not ready),
+  // the point lands exactly on the trace path with no offset.
   // Increment batch counter and name
   state.traceBatchCounter++;
   const name = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
