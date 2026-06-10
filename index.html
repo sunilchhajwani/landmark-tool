@@ -53,6 +53,13 @@
   .toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c8c8ce; margin-bottom: 4px; cursor: pointer; }
   .toggle-row input { margin: 0; }
 
+  /* Eraser mode active state */
+  #btnEraser.active {
+    background: #c44; border-color: #c44; color: white;
+  }
+  /* Cursor when eraser is active */
+  body.eraser-active #stage-wrap { cursor: none; }
+
   /* ---- Landmarks list ---- */
   #lmList { list-style: none; padding: 0; margin: 0; }
   #lmList li {
@@ -121,6 +128,33 @@
   .edge-badge-computing { background: #4a3a10; color: #ffd078; border-color: #6a5020; }
   .edge-badge-ready     { background: #143a1f; color: #7fdf98; border-color: #205a30; }
   .edge-badge-error     { background: #4a1018; color: #ff8b98; border-color: #6a2030; }
+
+  /* Eraser mode banner */
+  .eraser-badge {
+    position: absolute;
+    top: 10px; left: 50%; transform: translateX(-50%);
+    background: #c44; color: white;
+    padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500;
+    z-index: 12; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  /* Eraser brush cursor (SVG circle following the mouse) */
+  #eraserCursor {
+    position: absolute; pointer-events: none; z-index: 13;
+    display: none;
+  }
+  #eraserCursor circle.outer {
+    fill: rgba(204, 68, 68, 0.15);
+    stroke: rgba(204, 68, 68, 0.9);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+  }
+  #eraserCursor circle.inner {
+    fill: none;
+    stroke: rgba(255, 100, 100, 0.6);
+    stroke-width: 1;
+  }
+  body.eraser-active #eraserCursor { display: block; }
 
   /* ---- Context menu ---- */
   #ctxmenu {
@@ -291,6 +325,19 @@
       <div class="section">
         <h2>Landmarks <span id="lmCount" style="color:#5a5a62">(0)</span></h2>
         <div class="btn-row">
+          <button id="btnEraser" disabled title="Eraser mode: click and drag across points to delete them. Adjust brush size below. Press Esc to exit.">🩹 Eraser</button>
+          <button id="btnUndoErase" class="danger" disabled title="Restore the last batch of points deleted by the eraser">↶ Undo erase</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <label>Brush size</label>
+          <select id="eraserSizeSel">
+            <option value="10">10 px (small)</option>
+            <option value="20" selected>20 px (medium)</option>
+            <option value="40">40 px (large)</option>
+            <option value="80">80 px (huge)</option>
+          </select>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
           <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
           <button id="btnClearAll" class="danger" disabled>Clear all</button>
         </div>
@@ -332,9 +379,14 @@
     <div id="stage">
       <img id="bgImg" alt="">
       <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <svg id="eraserCursor" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+        <circle class="outer" cx="100" cy="100" r="20" />
+        <circle class="inner" cx="100" cy="100" r="3" />
+      </svg>
     </div>
     <div id="mode-badge" class="editing">EDIT</div>
     <div id="edgeBadge" class="edge-badge edge-badge-idle">Edge map: not computed</div>
+    <div id="eraserBadge" class="eraser-badge" style="display:none">🩹 Eraser mode — click and drag to delete points · Esc to exit</div>
     <div id="status">
       <span id="statusLeft">No image loaded</span>
       <span id="statusRight"></span>
@@ -378,6 +430,10 @@ const state = {
   edgeComputing: false,    // true while async compute is running
   snapRadius: 30,          // snap search radius in pixels
   snapEnabled: true,       // whether new placements auto-snap
+  // Eraser tool
+  eraserActive: false,     // true when eraser mode is on
+  eraserRadius: 20,        // brush size in pixels
+  eraserLastSweep: null,   // [{id, name, x, y, color, group}] — points removed in last sweep (for undo)
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -600,9 +656,19 @@ function bindUI() {
   $('btnClearAll').onclick = () => {
     if (state.landmarks.length === 0) return;
     if (confirm(`Delete all ${state.landmarks.length} landmarks?`)) {
-      state.landmarks = []; state.selectedId = null; renderAll();
+      state.landmarks = []; state.selectedId = null; state.eraserLastSweep = null;
+      $('btnUndoErase').disabled = true;
+      renderAll();
     }
   };
+
+  // Eraser
+  $('btnEraser').onclick = () => setEraserActive(!state.eraserActive);
+  $('eraserSizeSel').onchange = (e) => {
+    state.eraserRadius = parseInt(e.target.value) || 20;
+    updateEraserCursor();
+  };
+  $('btnUndoErase').onclick = undoLastErase;
 
   // Export
   $('btnExportJson').onclick = exportJSON;
@@ -666,12 +732,17 @@ function loadImageFile(file) {
       $('btnExportSvg').disabled = false;
       $('btnComputeEdges').disabled = false;
       $('btnSnapAll').disabled = false;
+      $('btnEraser').disabled = false;
       // Reset edge map for new image
       state.edgeMap = null;
       state.edgeW = state.edgeH = 0;
       state.edgeReady = false;
       hideEdgeOverlay();
       setEdgeStatus('idle', 'Edge map: not computed');
+      // Exit eraser mode if active
+      if (state.eraserActive) setEraserActive(false);
+      state.eraserLastSweep = null;
+      $('btnUndoErase').disabled = true;
       setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
       renderAll();
       showWelcomeTip();
@@ -1274,6 +1345,117 @@ function deleteLandmark(id) {
   renderAll();
 }
 
+// =====================================================================
+// ERASER TOOL — click and drag across points to delete them quickly
+// =====================================================================
+function setEraserActive(active) {
+  state.eraserActive = active;
+  document.body.classList.toggle('eraser-active', active);
+  $('btnEraser').classList.toggle('active', active);
+  $('eraserBadge').style.display = active ? 'block' : 'none';
+  // Update cursor SVG radius to match current eraser size
+  updateEraserCursor();
+  if (active) setStatus('Eraser mode ON — click and drag across points to delete.', 'warn');
+  else setStatus('Eraser mode OFF.', '');
+}
+
+function updateEraserCursor() {
+  const r = state.eraserRadius;
+  // The eraserCursor SVG is 200x200, centered at (100,100). Scale radius.
+  // Display radius on screen ≈ r * current scale.
+  // We just set the SVG circle radius to r (will be CSS-scaled by stage transform).
+  const outer = document.querySelector('#eraserCursor circle.outer');
+  if (outer) outer.setAttribute('r', r);
+  // Position the SVG so its center is at the mouse, and its size matches the brush
+  // We'll set width/height to 2r+10 and offset by r+5 in updateEraserCursorPos
+  const cursor = $('eraserCursor');
+  if (cursor) {
+    const size = (r + 10) * 2;
+    cursor.setAttribute('width', size);
+    cursor.setAttribute('height', size);
+    // Recenter the circles
+    const cx = size / 2;
+    outer.setAttribute('cx', cx);
+    outer.setAttribute('cy', cx);
+    const inner = document.querySelector('#eraserCursor circle.inner');
+    if (inner) {
+      inner.setAttribute('cx', cx);
+      inner.setAttribute('cy', cx);
+    }
+  }
+}
+
+function updateEraserCursorPos(clientX, clientY) {
+  const cursor = $('eraserCursor');
+  if (!cursor) return;
+  // Position so the center of the cursor SVG is at the mouse,
+  // accounting for the stage's pan/zoom transform.
+  const r = state.eraserRadius;
+  const screenR = r * state.scale;
+  const size = (screenR + 10) * 2;
+  // Convert mouse to stage-image coordinates
+  const stageRect = $('stage').getBoundingClientRect();
+  const imgX = (clientX - stageRect.left) / state.scale;
+  const imgY = (clientY - stageRect.top) / state.scale;
+  // Place cursor SVG at the screen position corresponding to (imgX, imgY)
+  const screenX = stageRect.left + imgX * state.scale;
+  const screenY = stageRect.top + imgY * state.scale;
+  cursor.style.left = (screenX - size / 2) + 'px';
+  cursor.style.top  = (screenY - size / 2) + 'px';
+  cursor.style.width = size + 'px';
+  cursor.style.height = size + 'px';
+}
+
+// Erase all landmarks within eraserRadius of (x, y) [in image coordinates]
+function eraseAtPoint(x, y) {
+  const r = state.eraserRadius;
+  const toDelete = [];
+  for (const lm of state.landmarks) {
+    const dx = lm.x - x;
+    const dy = lm.y - y;
+    if (dx * dx + dy * dy <= r * r) {
+      toDelete.push(lm);
+    }
+  }
+  if (toDelete.length === 0) return 0;
+  // Save for undo (only if this is the start of a new sweep)
+  if (!state.eraserLastSweep) {
+    state.eraserLastSweep = [];
+  }
+  // Mark deleted ones
+  const idsToDelete = new Set(toDelete.map(l => l.id));
+  for (const lm of toDelete) {
+    state.eraserLastSweep.push({ ...lm });
+  }
+  state.landmarks = state.landmarks.filter(l => !idsToDelete.has(l.id));
+  if (state.selectedId && idsToDelete.has(state.selectedId)) {
+    state.selectedId = null;
+  }
+  $('btnUndoErase').disabled = false;
+  return toDelete.length;
+}
+
+// Start a new eraser sweep (called on mousedown)
+function beginEraserSweep() {
+  state.eraserLastSweep = null;
+}
+
+function undoLastErase() {
+  if (!state.eraserLastSweep || state.eraserLastSweep.length === 0) return;
+  // Restore the points
+  for (const lm of state.eraserLastSweep) {
+    // Recreate the landmark with its original id
+    state.landmarks.push(lm);
+    // Make sure nextId is past this id
+    if (lm.id >= state.nextId) state.nextId = lm.id + 1;
+  }
+  const count = state.eraserLastSweep.length;
+  state.eraserLastSweep = null;
+  $('btnUndoErase').disabled = true;
+  setStatus(`Restored ${count} landmark${count === 1 ? '' : 's'} from eraser.`, 'ok');
+  renderAll();
+}
+
 function selectLandmark(id) {
   state.selectedId = id;
   render();
@@ -1580,6 +1762,19 @@ function onMouseDown(e) {
     return;
   }
 
+  // Eraser mode: click and drag to delete points
+  if (state.eraserActive) {
+    const p = screenToImage(e.clientX, e.clientY);
+    beginEraserSweep();
+    const n = eraseAtPoint(p.x, p.y);
+    if (n > 0) {
+      setStatus(`Erased ${n} landmark${n === 1 ? '' : 's'}.`, 'warn');
+      renderAll();
+    }
+    dragState = { kind: 'eraser', lastX: p.x, lastY: p.y };
+    return;
+  }
+
   // Drag a landmark?
   const target = e.target.closest('.landmark-group');
   if (target && state.mode === 'edit') {
@@ -1593,6 +1788,10 @@ function onMouseDown(e) {
 }
 
 function onMouseMove(e) {
+  // Always update eraser cursor position when active
+  if (state.eraserActive) {
+    updateEraserCursorPos(e.clientX, e.clientY);
+  }
   if (!dragState) return;
   if (dragState.kind === 'pan') {
     state.panX = dragState.panX + (e.clientX - dragState.startX);
@@ -1612,13 +1811,36 @@ function onMouseMove(e) {
       render();
       renderList();
     }
+  } else if (dragState.kind === 'eraser') {
+    // Continuously erase as the user drags
+    const p = screenToImage(e.clientX, e.clientY);
+    // Throttle: only erase every few pixels of movement
+    const dx = p.x - dragState.lastX;
+    const dy = p.y - dragState.lastY;
+    if (dx * dx + dy * dy >= (state.eraserRadius * 0.5) ** 2) {
+      const n = eraseAtPoint(p.x, p.y);
+      if (n > 0) {
+        setStatus(`Erased ${n} landmark${n === 1 ? '' : 's'}.`, 'warn');
+        renderAll();
+      }
+      dragState.lastX = p.x;
+      dragState.lastY = p.y;
+    }
   }
 }
 
 function onMouseUp(e) {
   if (dragState) {
-    const target = document.querySelector(`.landmark-group[data-id="${dragState.id}"]`);
-    if (target) target.classList.remove('dragging');
+    if (dragState.kind === 'lm') {
+      const target = document.querySelector(`.landmark-group[data-id="${dragState.id}"]`);
+      if (target) target.classList.remove('dragging');
+    }
+    if (dragState.kind === 'eraser' && state.eraserLastSweep) {
+      const count = state.eraserLastSweep.length;
+      if (count > 0) {
+        setStatus(`Eraser sweep: deleted ${count} landmark${count === 1 ? '' : 's'}. Click ↶ Undo erase to restore.`, 'warn');
+      }
+    }
     dragState = null;
   }
 }
@@ -1704,9 +1926,21 @@ function onKey(e) {
     }
   }
   if (e.key === 'Escape') {
+    if (state.eraserActive) {
+      setEraserActive(false);
+      e.preventDefault();
+      return;
+    }
     if (calStep) clearCalibration();
     state.selectedId = null;
     render();
+  }
+  // Ctrl+Z / Cmd+Z: undo last eraser sweep
+  if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) {
+    if (state.eraserLastSweep && state.eraserLastSweep.length > 0) {
+      undoLastErase();
+      e.preventDefault();
+    }
   }
 }
 
