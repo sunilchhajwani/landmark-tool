@@ -239,6 +239,28 @@
       </div>
 
       <div class="section">
+        <h2>Edge Snap</h2>
+        <label class="toggle-row"><input type="checkbox" id="snapEnabledCb" checked> Auto-snap new placements to edges</label>
+        <div class="row" style="margin-top:6px">
+          <label>Radius</label>
+          <select id="snapRadiusSel">
+            <option value="10">10 px (tight)</option>
+            <option value="20">20 px</option>
+            <option value="30" selected>30 px (default)</option>
+            <option value="50">50 px</option>
+            <option value="80">80 px</option>
+            <option value="120">120 px (loose)</option>
+          </select>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnComputeEdges" disabled>Compute edges</button>
+          <button id="btnSnapAll" disabled title="Snap every landmark to its nearest detected edge">Snap all</button>
+        </div>
+        <label class="toggle-row" style="margin-top:6px"><input type="checkbox" id="showEdgeOverlay"> Show edge overlay</label>
+        <p class="help" style="margin-top:4px">Edge detection (Sobel) finds tissue boundaries in the image. New landmarks auto-snap to the nearest edge within the search radius. Use a smaller radius for fine structures, larger for fuzzy ones.</p>
+      </div>
+
+      <div class="section">
         <h2>Landmarks <span id="lmCount" style="color:#5a5a62">(0)</span></h2>
         <div class="btn-row">
           <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
@@ -319,6 +341,14 @@ const state = {
   presets: {},             // {presetName: {landmarks: [{name, x_frac, y_frac, color, group}]}}
   activePreset: null,      // name of currently applied preset (for "re-apply")
   presetLandmarkIds: {},   // {landmarkName: id} for re-apply tracking
+  // Edge detection (computed on demand from the loaded image)
+  edgeMap: null,           // Float32Array of edge magnitudes (1D, row-major)
+  edgeW: 0, edgeH: 0,      // dimensions of edgeMap
+  edgeScale: 1,            // scale factor from original image to edgeMap
+  edgeReady: false,        // true once computed
+  edgeComputing: false,    // true while async compute is running
+  snapRadius: 30,          // snap search radius in pixels
+  snapEnabled: true,       // whether new placements auto-snap
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -513,6 +543,24 @@ function bindUI() {
   $('showGrid').onchange = (e) => { state.snapToGrid = e.target.checked; render(); };
   $('gridSpacing').onchange = (e) => { state.gridSpacing = parseFloat(e.target.value) || 0.5; render(); };
 
+  // Edge snap
+  $('snapEnabledCb').onchange = (e) => { state.snapEnabled = e.target.checked; };
+  $('snapRadiusSel').onchange = (e) => { state.snapRadius = parseInt(e.target.value) || 30; };
+  $('btnComputeEdges').onclick = () => computeEdgeMap();
+  $('btnSnapAll').onclick = () => snapAllLandmarks(true);
+  $('showEdgeOverlay').onchange = (e) => {
+    edgeOverlayVisible = e.target.checked;
+    if (edgeOverlayVisible) {
+      if (!state.edgeReady) {
+        computeEdgeMap().then(() => { renderEdgeOverlay(); $('showEdgeOverlay').checked = true; });
+      } else {
+        renderEdgeOverlay();
+      }
+    } else {
+      hideEdgeOverlay();
+    }
+  };
+
   // Landmarks
   $('btnAddPoint').onclick = () => setStatus('Right-click on the image to place a point.', 'warn');
   $('btnClearAll').onclick = () => {
@@ -582,9 +630,18 @@ function loadImageFile(file) {
       $('btnAddPoint').disabled = false;
       $('btnExportJson').disabled = false;
       $('btnExportSvg').disabled = false;
+      $('btnComputeEdges').disabled = false;
+      $('btnSnapAll').disabled = false;
+      // Reset edge map for new image
+      state.edgeMap = null;
+      state.edgeW = state.edgeH = 0;
+      state.edgeReady = false;
+      hideEdgeOverlay();
       setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
       renderAll();
       showWelcomeTip();
+      // Auto-compute edges in background for faster first snap
+      computeEdgeMap();
     };
     img.src = e.target.result;
   };
@@ -668,6 +725,13 @@ function addLandmark(x, y, name) {
   };
   state.landmarks.push(lm);
   state.selectedId = lm.id;
+  // Auto-snap to nearest edge if enabled and edge map is ready
+  if (state.snapEnabled && state.edgeReady) {
+    snapLandmark(lm, true);
+  } else if (state.snapEnabled && !state.edgeReady && !state.edgeComputing) {
+    // Trigger edge computation in background; will not snap this one retroactively
+    computeEdgeMap();
+  }
   renderAll();
   return lm;
 }
@@ -711,6 +775,14 @@ function applyPreset(name, isReapply) {
   renderAll();
   setStatus(`Applied preset "${name}" — ${state.landmarks.length} landmarks placed. Drag any to adjust.`, 'ok');
   showPresetTip(name, state.landmarks.length);
+  // Auto-snap all landmarks to edges
+  if (state.snapEnabled) {
+    if (state.edgeReady) {
+      snapAllLandmarks(true);
+    } else if (!state.edgeComputing) {
+      computeEdgeMap().then(() => snapAllLandmarks(true));
+    }
+  }
 }
 
 function saveCurrentAsPreset() {
@@ -818,6 +890,14 @@ function applySpecialPreset(kind, n, isReapply) {
   const label = kind === 'blank' ? 'blank' : kind === 'grid' ? `${n}×${n} uniform grid` : `adaptive ${n} (centered)`;
   setStatus(`Applied ${label} — ${count} landmark${count === 1 ? '' : 's'}.`, 'ok');
   showPresetTip(state.activePreset, count);
+  // Auto-snap all landmarks to edges
+  if (state.snapEnabled && count > 0) {
+    if (state.edgeReady) {
+      snapAllLandmarks(true);
+    } else if (!state.edgeComputing) {
+      computeEdgeMap().then(() => snapAllLandmarks(true));
+    }
+  }
 }
 
 function makeGridPoint(i, j, n, W, H) {
@@ -846,6 +926,260 @@ function centeredSamples(n, p) {
     out.push(Math.max(0, Math.min(1, t)));
   }
   return out;
+}
+
+// =====================================================================
+// EDGE DETECTION (Sobel) — finds tissue boundaries in the loaded image
+// =====================================================================
+//
+// Why this exists: preset-based landmark placement puts points in
+// geometric positions (a grid, a centered cluster, an anatomical
+// example). But the actual tissue boundaries in the image are rarely
+// at those exact pixel locations. Sobel edge detection produces a map
+// of "where brightness changes sharply" — which corresponds to tissue
+// interfaces in medical imaging. Snapping each landmark to the
+// nearest strong edge in a search window around its default position
+// pulls the point onto the actual structure.
+//
+// Performance: we downsample the image to ~400px wide before computing
+// the edge map. This keeps the Sobel pass under ~300ms even for large
+// source images, and the snap search is O(radius²) per landmark which
+// is fast enough at radius≤100.
+//
+// The edge map is cached in state.edgeMap as a Float32Array of
+// magnitudes, indexed [y * edgeW + x]. Magnitudes are normalized to
+// 0..1 (max value in the map scaled to 1.0) so the snap search can
+// threshold and rank.
+
+function computeEdgeMap() {
+  if (!state.image) return Promise.resolve(false);
+  if (state.edgeReady) return Promise.resolve(true);
+  if (state.edgeComputing) return new Promise(r => setTimeout(() => computeEdgeMap().then(r), 100));
+
+  state.edgeComputing = true;
+  setStatus('Computing edge map (Sobel)…', 'warn');
+
+  return new Promise((resolve) => {
+    // Use requestAnimationFrame to yield to UI, then run async
+    setTimeout(() => {
+      try {
+        const img = state.image;
+        const W0 = img.naturalWidth;
+        const H0 = img.naturalHeight;
+        // Downsample target ~400px wide
+        const targetW = Math.min(400, W0);
+        const scale = targetW / W0;
+        const targetH = Math.round(H0 * scale);
+
+        // Draw to offscreen canvas at the target size, get grayscale pixels
+        const off = document.createElement('canvas');
+        off.width = targetW;
+        off.height = targetH;
+        const ctx = off.getContext('2d');
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        const imgData = ctx.getImageData(0, 0, targetW, targetH);
+        const px = imgData.data;
+        const W = targetW, H = targetH;
+
+        // Build grayscale buffer (luminance)
+        const gray = new Float32Array(W * H);
+        for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+          // Standard luminance: 0.299 R + 0.587 G + 0.114 B
+          gray[j] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+        }
+
+        // Apply a 3x3 box blur to reduce speckle noise before Sobel
+        const blurred = new Float32Array(W * H);
+        for (let y = 1; y < H - 1; y++) {
+          for (let x = 1; x < W - 1; x++) {
+            let sum = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                sum += gray[(y + dy) * W + (x + dx)];
+              }
+            }
+            blurred[y * W + x] = sum / 9;
+          }
+        }
+
+        // Sobel operator: 3x3 gradient magnitude
+        // Gx = [[-1,0,1],[-2,0,2],[-1,0,1]]
+        // Gy = [[-1,-2,-1],[0,0,0],[1,2,1]]
+        const edges = new Float32Array(W * H);
+        let maxMag = 0;
+        for (let y = 1; y < H - 1; y++) {
+          for (let x = 1; x < W - 1; x++) {
+            const idx = y * W + x;
+            const tl = blurred[(y - 1) * W + (x - 1)];
+            const t  = blurred[(y - 1) * W + x];
+            const tr = blurred[(y - 1) * W + (x + 1)];
+            const l  = blurred[y * W + (x - 1)];
+            const r  = blurred[y * W + (x + 1)];
+            const bl = blurred[(y + 1) * W + (x - 1)];
+            const b  = blurred[(y + 1) * W + x];
+            const br = blurred[(y + 1) * W + (x + 1)];
+            const gx = -tl + tr - 2 * l + 2 * r - bl + br;
+            const gy = -tl - 2 * t - tr + bl + 2 * b + br;
+            const mag = Math.sqrt(gx * gx + gy * gy);
+            edges[idx] = mag;
+            if (mag > maxMag) maxMag = mag;
+          }
+        }
+
+        // Normalize to 0..1
+        if (maxMag > 0) {
+          for (let i = 0; i < edges.length; i++) edges[i] /= maxMag;
+        }
+
+        state.edgeMap = edges;
+        state.edgeW = W;
+        state.edgeH = H;
+        state.edgeScale = scale;
+        state.edgeReady = true;
+        state.edgeComputing = false;
+        setStatus(`Edge map ready · ${W}×${H}px (${state.snapRadius}px snap radius)`, 'ok');
+        render();
+        resolve(true);
+      } catch (err) {
+        state.edgeComputing = false;
+        setStatus('Edge detection failed: ' + err.message, 'err');
+        resolve(false);
+      }
+    }, 10);
+  });
+}
+
+// Find the pixel (in original-image coordinates) with the highest edge
+// magnitude within `radius` pixels of (x, y). Returns {x, y, magnitude}.
+// If no edge is found above a minimum threshold, returns the input.
+function snapToNearestEdge(x, y, radius) {
+  if (!state.edgeReady || !state.edgeMap) return { x, y, magnitude: 0 };
+  const W = state.edgeW, H = state.edgeH;
+  const s = state.edgeScale;
+  // Convert to edge-map coordinates
+  const ex0 = x * s, ey0 = y * s;
+  const er = Math.max(1, Math.round(radius * s));
+  const x0 = Math.max(1, Math.floor(ex0 - er));
+  const y0 = Math.max(1, Math.floor(ey0 - er));
+  const x1 = Math.min(W - 2, Math.ceil(ex0 + er));
+  const y1 = Math.min(H - 2, Math.ceil(ey0 + er));
+
+  let bestX = ex0, bestY = ey0, bestMag = -1;
+  // Edge threshold: only snap to "strong" edges (top ~30% of the range)
+  // This prevents snapping to noise. Tunable.
+  const minMag = 0.15;
+  for (let ey = y0; ey <= y1; ey++) {
+    for (let ex = x0; ex <= x1; ex++) {
+      const dx = ex - ex0, dy = ey - ey0;
+      if (dx * dx + dy * dy > er * er) continue;
+      const mag = state.edgeMap[ey * W + ex];
+      if (mag < minMag) continue;
+      if (mag > bestMag) {
+        bestMag = mag;
+        bestX = ex;
+        bestY = ey;
+      }
+    }
+  }
+  if (bestMag < 0) return { x, y, magnitude: 0 };
+  // Convert back to original-image coordinates
+  return { x: bestX / s, y: bestY / s, magnitude: bestMag };
+}
+
+// Snap a single landmark to the nearest edge, with optional animation
+function snapLandmark(lm, animated) {
+  const r = state.snapRadius;
+  const result = snapToNearestEdge(lm.x, lm.y, r);
+  if (result.magnitude > 0 && (result.x !== lm.x || result.y !== lm.y)) {
+    if (animated) {
+      animateSnap(lm, result.x, result.y);
+    } else {
+      lm.x = result.x;
+      lm.y = result.y;
+      render();
+    }
+  }
+  return result;
+}
+
+// Animate a landmark sliding from its current position to (tx, ty)
+// over ~250ms. Renders each frame.
+function animateSnap(lm, tx, ty) {
+  const sx = lm.x, sy = lm.y;
+  const dx = tx - sx, dy = ty - sy;
+  const duration = 250;
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - start) / duration);
+    // Ease-out
+    const e = 1 - Math.pow(1 - t, 3);
+    lm.x = sx + dx * e;
+    lm.y = sy + dy * e;
+    render();
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// Snap all current landmarks to nearest edges (animated)
+function snapAllLandmarks(animated) {
+  if (!state.edgeReady) {
+    setStatus('Edge map not ready — computing now…', 'warn');
+    computeEdgeMap().then(() => snapAllLandmarks(animated));
+    return;
+  }
+  let snapped = 0;
+  for (const lm of state.landmarks) {
+    const r = snapLandmark(lm, animated);
+    if (r.magnitude > 0) snapped++;
+  }
+  setStatus(`Snapped ${snapped}/${state.landmarks.length} landmarks to nearest edges.`, 'ok');
+}
+
+// Render the edge map as a faint overlay (toggle-able)
+let edgeOverlayVisible = false;
+function renderEdgeOverlay() {
+  if (!state.edgeReady || !edgeOverlayVisible) return;
+  // We can't directly render Float32Array on the SVG overlay.
+  // Use a separate canvas positioned over the image at edge-map scale.
+  let canvas = $('edgeCanvas');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'edgeCanvas';
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.opacity = '0.5';
+    canvas.style.mixBlendMode = 'screen';
+    $('stage').insertBefore(canvas, $('overlaySvg'));
+  }
+  // Render at edgeMap native size, then scale up via CSS to image size
+  if (canvas.width !== state.edgeW || canvas.height !== state.edgeH) {
+    canvas.width = state.edgeW;
+    canvas.height = state.edgeH;
+    canvas.style.width = state.naturalW + 'px';
+    canvas.style.height = state.naturalH + 'px';
+  }
+  const ctx = canvas.getContext('2d');
+  const imgData = ctx.createImageData(state.edgeW, state.edgeH);
+  const edges = state.edgeMap;
+  for (let i = 0; i < edges.length; i++) {
+    // Map magnitude to brightness (use a power curve to make weak edges visible)
+    const m = Math.min(1, Math.pow(edges[i], 0.6));
+    const v = Math.floor(m * 255);
+    const j = i * 4;
+    imgData.data[j] = v;        // R
+    imgData.data[j + 1] = v;    // G
+    imgData.data[j + 2] = v;    // B
+    imgData.data[j + 3] = Math.floor(m * 180); // A
+  }
+  ctx.putImageData(imgData, 0, 0);
+  canvas.style.display = 'block';
+}
+function hideEdgeOverlay() {
+  const canvas = $('edgeCanvas');
+  if (canvas) canvas.style.display = 'none';
 }
 
 function deleteSelectedPreset() {
@@ -1075,7 +1409,7 @@ function showWelcomeTip() {
       <li><strong>Adaptive N</strong> — denser in center, sparser at edges (good for typical reference images)</li>
       <li><strong>PLAX (example)</strong> — built-in example preset for cardiac echo</li>
     </ul>
-    Then click <strong>Apply preset</strong>. Drag any misaligned point to fine-tune. Right-click empty space to add new points, right-click an existing point to rename or delete. When done, click <strong>Save current as preset…</strong> to reuse the placement on similar images.
+    Then click <strong>Apply preset</strong>. Each landmark will auto-snap to the nearest detected tissue boundary (Sobel edge detection runs once on the loaded image). Drag any misaligned point to fine-tune. Right-click empty space to add new points, right-click an existing point to rename or delete. When done, click <strong>Save current as preset…</strong> to reuse the placement on similar images.
   `;
   tip.style.display = 'block';
   tip.querySelector('.tip-dismiss').onclick = () => {
@@ -1117,7 +1451,7 @@ function showPresetTip(presetKey, count) {
     html = `<strong>Adaptive 9 placed (81 points, denser in center).</strong> Finest adaptive option. Drag misaligned points. If too cluttered, drop to <strong>Adaptive 7</strong> or <strong>Adaptive 5</strong>.`;
     actionValue = '__adaptive_7__'; actionLabel = 'Switch to Adaptive 7';
   } else if (BUILTIN_PRESETS[presetKey]) {
-    html = `<strong>Example preset applied.</strong> This is a built-in starting point — drag any misaligned points onto the actual structures. When you're happy with the placement, click <strong>Save current as preset…</strong> to keep your version.`;
+    html = `<strong>Example preset applied with edge-snap.</strong> Each landmark slid to the nearest detected tissue boundary. Drag any that ended up on the wrong structure. When happy, click <strong>Save current as preset…</strong> to keep your version. Adjust snap radius in the Edge Snap section if points landed too far/close.`;
   } else {
     // User-saved preset
     html = `<strong>Preset "${presetKey}" applied (${count} landmarks).</strong> Drag any misaligned points to fine-tune. Click <strong>Re-apply</strong> to reset to this preset's default positions. To save your changes as a new preset, use <strong>Save current as preset…</strong>`;
