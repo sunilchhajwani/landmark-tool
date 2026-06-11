@@ -2996,104 +2996,262 @@ function exportJSON() {
 }
 
 // Build a ready-to-paste prompt for a CLI (Gemini, Claude, etc.) to
-// generate a clinical simulator from the spec. The prompt includes:
-//   - Context (what kind of simulator, who is it for)
+// generate a clinical simulator from the spec. The prompt is fully
+// generic — it adapts to whatever is in the spec (echo, CXR, CT,
+// chart, photo, diagram) without assuming echo conventions.
+//
+// The prompt includes:
+//   - Context inferred from the spec
 //   - Embedded JSON spec
-//   - Required features (rendering, calipers, animation if applicable)
+//   - Required features (rendering, interaction, calipers if applicable)
 //   - Verification checklist
 function buildSimPrompt() {
   const data = buildExportData();
   const json = JSON.stringify(data, null, 2);
-  const view = data.source.view || 'Custom';
-  const path = data.pathology.name;
-  const v = data.source.view;
+  const ctx = inferPromptContext(data);
   return `# Build a clinical simulator from this spec
 
 ## What this is
 
-A clinical teaching simulator for **${data.anatomy.name}**${path !== 'normal' && path !== 'custom' ? ` (${path})` : ''}.
-Target audience: **postgraduate medical residents and intensivists** learning to interpret ${v || 'medical imaging'}.
+A ${ctx.isMedical ? 'clinical teaching' : 'visualization'} simulator for **${data.anatomy.name}**.
+${ctx.audienceLine}
+${ctx.cycleLine}
 
 ## Output format
 
 A **single self-contained HTML file** with embedded CSS and JavaScript.
 No frameworks, no build step, no external dependencies. Should run by double-clicking.
-The file should follow the same architectural pattern as the landmark tool that produced this spec.
-
-## Source data (read this carefully)
-
-\`\`\`json
-${json}
-\`\`\`
-
-## Required features
-
-1. **Render the anatomy** as a 2D canvas/SVG using the landmark coordinates:
-   - ${data.anatomy.structures.length} structures defined in \`anatomy.structures\`
-   - Use the topology from \`topology.groups\` — smooth curves (Catmull-Rom) for walls, straight lines for valve annuli, dots only for free reference points
-   - Apply render order from \`anatomy.structures[].renderOrder\` (background → chambers → walls → valves)
-   - Use \`interiorColor\` from each chamber structure for the blood pool fill
-
-2. **Clinical labels** following \`renderHints.labelStyle\`:
-   - Use abbreviations (e.g., "LV", "LA", "MV", "AV", "RVOT")
-   - Position labels outside the chamber, with paint-order: stroke for readability
-   - Match colors to \`topology.groups[].color\`
-
-3. **Interactive calipers** for each measurement in \`measurements\`:
-   - User clicks two landmarks → distance displayed
-   - Show the expected value from \`measurements[].expected\` (e.g., "4.0-5.6 cm")
-   - Show clinical significance from \`measurements[].clinicalSignificance\` on hover
-   - Specifically support: ${data.measurements.map(m => '`' + m.name + '`').join(', ')}
-
-4. **Pathology-aware**:
-   - This is a **${path}** case${data.pathology.description ? ': ' + data.pathology.description : ''}
-   ${path === 'normal' ? `- For normal cases, no special pathology UI needed
-   - But support toggling comparison views if \`pathology.comparisons\` is non-empty` : `- Show the pathology state clearly (e.g., septal bulge, chamber enlargement, leaflet thickening)
-   - Include a toggle to switch between normal and this pathology for comparison
-   - Highlight the structures that are abnormal`}
-
-5. **Calibration**:
-   - If \`source.calibration\` is set, use \`pxPerCm\` to display distances in cm
-   - Landmarks should show their cm coordinates in the sidebar
-
-6. **Dark theme** as specified in \`renderHints.cssTheme\`
-   - Background: #050507
-   - Text: #c8c8ce
-   - Accents: use the structure colors
-
-## Architectural pattern to follow
-
-Use the same pattern as the existing landmark tool at https://github.com/sunilchhajwani/landmark-tool:
+Follow the same architectural pattern as the existing landmark tool at
+https://github.com/sunilchhajwani/landmark-tool:
 - Single HTML file
 - Vanilla JS, no frameworks
 - state object holds all mutable state
 - render functions for canvas, sidebar, status
 - Event handlers delegate based on mode
 
+## Source data (read this carefully)
+
+The spec below describes the anatomy/structures, their topology (how they connect),
+rendering hints, measurements the simulator should support, and any clinical context.
+
+\`\`\`json
+${json}
+\`\`\`
+
+## Context inferred from the spec
+
+${ctx.contextBlock}
+
+## Required features
+
+1. **Render the structures** as a 2D canvas/SVG using the landmark coordinates:
+   - ${data.anatomy.structures.length} structures defined in \`anatomy.structures\`
+   - Use the topology from \`topology.groups\` — smooth curves (Catmull-Rom) for organic walls, straight lines for rigid structures, dots only for free reference points
+   - Apply render order from \`anatomy.structures[].renderOrder\` (background → chambers → walls → valves)
+   - Use \`interiorColor\` from each chamber structure for the fill
+
+2. **Labels** following \`renderHints.labelStyle\`:
+   - Match colors to \`topology.groups[].color\`
+   - Position labels outside the structure, with paint-order: stroke for readability
+   - ${ctx.labelHint}
+
+${ctx.measurementBlock}
+${ctx.animationBlock}
+${ctx.pathologyBlock}
+
+## Dark theme
+
+Background: \`#050507\`. Text: \`#c8c8ce\`. Accents: use the structure colors from the spec.
+
 ## Verification checklist
 
 Before declaring done, verify:
 - [ ] All ${data.landmarks.length} landmarks render at the correct positions
 - [ ] ${data.anatomy.structures.length} structures visually distinguishable
-- [ ] Calipers work for at least LVIDd${data.measurements.find(m => m.name === 'IVSd') ? ', IVSd' : ''}${data.measurements.find(m => m.name === 'LVPWd') ? ', LVPWd' : ''}${data.measurements.find(m => m.name === 'MV E-point') ? ', MV E-point' : ''}
-- [ ] Distances display in cm (or px if no calibration)
+${ctx.checklist}
 - [ ] No console errors when opened
 - [ ] Dark theme matches spec
 - [ ] Works offline (no external requests)
 - [ ] File size under 100KB
-
-## Testing
-
-Open the HTML file in Chrome/Firefox/Safari. Test the caliper feature by clicking two related landmarks. Verify measurements match the expected ranges in \`measurements\`.
 
 ## Notes for the LLM
 
 - ${data.anatomy.structures.length} structures is a lot — render them in z-order, not in declaration order
 - Use Catmull-Rom math for smooth curves (algorithm: for each segment, compute tangent from previous and next point, convert to cubic Bézier)
 - Don't fabricate image content from scratch — use the landmark coordinates as ground truth
-- The simulator is for **teaching**, so prioritize clarity over realism
-- The clinical measurements are the most important interactive feature — make them prominent and easy to use
+- ${ctx.clarityHint}
+
+## Testing
+
+Open the HTML file in Chrome/Firefox/Safari. Test the caliper feature by clicking two related landmarks. Verify measurements match the expected ranges in \`measurements\`.
 `;
+}
+
+// Infer context from the spec to build a view-agnostic prompt.
+// Returns sections that adapt to the content (echo, CXR, CT, chart, etc.)
+function inferPromptContext(data) {
+  const structures = data.anatomy.structures || [];
+  const measurements = data.measurements || [];
+  const landmarkNames = (data.landmarks || []).map(l => l.name);
+  const groupIds = (data.topology?.groups || []).map(g => (g.id || '').toLowerCase());
+
+  // Detect if this is medical (echo, CXR, CT, etc.) vs generic (chart, photo, diagram)
+  const medicalKeywords = ['lv', 'rv', 'la', 'ra', 'mv', 'av', 'tv', 'pv', 'aortic', 'mitral',
+                           'tricuspid', 'pulmonic', 'septum', 'pericardium', 'effusion',
+                           'plax', 'psax', 'a4c', 'a2c', 'cxr', 'echo', 'valve', 'atrium',
+                           'ventricle', 'heart', 'lung', 'thorax', 'chest', 'abdomen',
+                           'brain', 'skull', 'ventricle', 'cistern'];
+  const isMedical = landmarkNames.some(n => medicalKeywords.some(k => n.toLowerCase().includes(k)))
+                    || groupIds.some(g => medicalKeywords.some(k => g.includes(k)));
+
+  // Detect cycle/animation needs
+  const hasCycle = data.animation?.type === 'cycle'
+                   || (data.animation?.cycleFrames || []).length > 0
+                   || groupIds.some(g => g.includes('systole') || g.includes('diastole'));
+
+  // Detect pathology
+  const hasPathology = data.pathology?.name && data.pathology.name !== 'normal' && data.pathology.name !== 'custom';
+
+  // Build context block
+  let contextBlock = '';
+  if (isMedical) {
+    contextBlock = `This appears to be a **medical imaging** simulator (echo/CXR/CT/etc.).
+The landmarks represent anatomical structures; the topology defines how they connect.
+The measurements list provides clinical calipers with expected ranges and clinical significance.`;
+  } else {
+    contextBlock = `This is a **generic landmark-based visualization** — no medical domain assumptions.
+The landmarks are user-defined points on an image; the topology describes how they connect.
+The user is using this for ${inferGenericUseCase(data)} purposes.`;
+  }
+
+  // Build measurement block
+  let measurementBlock = '';
+  if (measurements.length > 0) {
+    const caliperTypes = detectCaliperTypes(measurements);
+    measurementBlock = `3. **Interactive calipers** for each measurement in \`measurements\`:
+   - User clicks two landmarks → ${caliperTypes.description}
+   - Show the expected value from \`measurements[].expected\` (e.g., "4.0-5.6 cm")
+   ${caliperTypes.showSignificance ? '- Show clinical significance from `measurements[].clinicalSignificance` on hover' : ''}
+   - Specifically support: ${measurements.map(m => '`' + m.name + '`').join(', ')}`;
+  } else {
+    measurementBlock = `3. **No calipers needed** — this spec doesn't define measurements.
+   - Don't add measurement features; just render the landmarks and topology`;
+  }
+
+  // Build animation block
+  let animationBlock = '';
+  if (hasCycle) {
+    animationBlock = `4. **Cycle animation**:
+   - The spec implies a time-varying anatomy (e.g., cardiac cycle)
+   - For each structure with motion, animate its shape/position over a cycle
+   - Use interpolation between keyframes (diastole ↔ systole)
+   - Provide a play/pause control and a timeline scrubber
+   - Sync animation to a virtual ECG (if medical context)`;
+  } else {
+    animationBlock = `4. **No animation** — this is a static anatomy view.
+   - Don't add animation controls; render the static topology`;
+  }
+
+  // Build pathology block
+  let pathologyBlock = '';
+  if (hasPathology) {
+    pathologyBlock = `5. **Pathology emphasis**:
+   - This represents **${data.pathology.name}** (${data.pathology.description || ''})
+   - Highlight the structures that are abnormal (e.g., thickened walls, enlarged chambers)
+   - Include a toggle to switch between normal and this pathology for comparison
+   - If \`pathology.comparisons\` has entries, support loading them as alternate states`;
+  } else {
+    pathologyBlock = `5. **No pathology** — this is a normal/standard anatomy or non-medical content.`;
+  }
+
+  // Label hint based on context
+  let labelHint;
+  if (isMedical) {
+    labelHint = 'Use standard anatomical abbreviations if recognizable (e.g., "LV", "MV", "AV")';
+  } else {
+    labelHint = 'Use the landmark names as given — they are user-defined, possibly semantic';
+  }
+
+  // Audience line
+  const audienceLine = isMedical
+    ? 'Target audience: **postgraduate medical residents and intensivists** learning to interpret this view.'
+    : 'Target audience: end-user is the spec author and their collaborators.';
+
+  // Cycle line
+  const cycleLine = hasCycle
+    ? 'The spec implies a cycle (systole/diastole or similar) — render should support showing the cycle.'
+    : 'Single static view — no cycle animation needed unless explicitly added.';
+
+  // Clarity hint
+  const clarityHint = isMedical
+    ? 'The simulator is for **clinical teaching**, so prioritize clarity over realism. Use clinical conventions.'
+    : 'The simulator is for **visualization and interaction**, so prioritize clarity and responsiveness.';
+
+  // Checklist additions
+  let checklist = '';
+  if (measurements.length > 0) {
+    checklist = `- [ ] Calipers work for the ${measurements.length} defined measurements\n${measurements.map(m => `- [ ] \`${m.name}\` measurement displays correctly`).join('\n')}\n`;
+  }
+  if (hasCycle) {
+    checklist += `- [ ] Cycle animation runs smoothly (no jank)\n- [ ] Play/pause/scrub controls work\n`;
+  }
+  if (hasPathology) {
+    checklist += `- [ ] Pathology state visually distinct from normal\n- [ ] Comparison toggle works\n`;
+  }
+
+  return {
+    isMedical,
+    contextBlock,
+    measurementBlock,
+    animationBlock,
+    pathologyBlock,
+    labelHint,
+    audienceLine,
+    cycleLine,
+    clarityHint,
+    checklist,
+  };
+}
+
+// Detect what kind of calipers the measurements describe
+function detectCaliperTypes(measurements) {
+  const text = measurements.map(m => (m.name + ' ' + (m.fullName || '')).toLowerCase()).join(' ');
+  const hasArea = text.includes('area');
+  const hasDiameter = text.includes('diameter') || text.includes('lvid') || text.includes('ivs') || text.includes('lvpw');
+  const hasDistance = hasDiameter || text.includes('separation') || text.includes('epss') || text.includes('distance');
+  const showSignificance = measurements.some(m => m.clinicalSignificance);
+
+  let description;
+  if (hasArea && hasDistance) {
+    description = 'show distance or area depending on which landmarks are selected';
+  } else if (hasArea) {
+    description = 'show the enclosed area';
+  } else {
+    description = 'show the distance';
+  }
+
+  return { description, showSignificance };
+}
+
+// Infer a generic use case when the spec is not medical
+function inferGenericUseCase(data) {
+  const structures = (data.anatomy?.structures || []).map(s => (s.id || '').toLowerCase());
+  const landmarkNames = (data.landmarks || []).map(l => (l.name || '').toLowerCase());
+  const allText = (structures.join(' ') + ' ' + landmarkNames.join(' ')).toLowerCase();
+
+  if (allText.includes('chart') || allText.includes('axis') || allText.includes('graph') || allText.includes('plot')) {
+    return 'chart/graph annotation';
+  }
+  if (allText.includes('photo') || allText.includes('face') || allText.includes('eye') || allText.includes('body')) {
+    return 'photo annotation';
+  }
+  if (allText.includes('diagram') || allText.includes('flow') || allText.includes('node')) {
+    return 'diagram annotation';
+  }
+  if (allText.includes('blueprint') || allText.includes('floor') || allText.includes('plan')) {
+    return 'architectural plan annotation';
+  }
+  return 'general image annotation';
 }
 
 function copySimPrompt() {
