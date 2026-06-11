@@ -484,7 +484,11 @@
           <button id="btnExportJson" class="primary" disabled>Export JSON</button>
           <button id="btnExportSvg" disabled>Export SVG</button>
         </div>
-        <p class="help" style="margin-top:4px">JSON = coordinates only (for simulator). SVG = portable image+landmarks file.</p>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnCopySimPrompt" disabled>📋 Copy sim prompt</button>
+          <button id="btnDownloadSimPrompt" disabled>Download .md</button>
+        </div>
+        <p class="help" style="margin-top:4px">JSON = full simulator spec for CLI (Gemini/Claude). Sim prompt = ready-to-paste instructions + spec for the CLI to consume. SVG = portable image+landmarks file.</p>
       </div>
 
       <div class="section">
@@ -611,7 +615,7 @@ const PRESET_PLAX_NORMAL = {
   // point connects back to the first.
   groups: [
     // LV cavity boundary — a closed smooth loop forming the inner wall
-    { style: 'smooth', closed: true, color: '#5fd178', members: [
+    { id: 'lv_cavity', style: 'smooth', closed: true, color: '#5fd178', members: [
       'ao_root_posterior_wall',  // top-right of LV
       'septum_basal',
       'septum_mid',
@@ -622,14 +626,14 @@ const PRESET_PLAX_NORMAL = {
       'posterior_wall_basal',    // bottom-right, back to start
     ]},
     // Mitral valve — annulus to leaflet tips (open shape, smooth)
-    { style: 'smooth', closed: false, color: '#5fb8ff', members: [
+    { id: 'mitral_valve', style: 'smooth', closed: false, color: '#5fb8ff', members: [
       'mv_annulus_anterior',
       'mv_anterior_leaflet_tip',
       'mv_posterior_leaflet_tip',
       'mv_annulus_posterior',
     ]},
     // Aortic root — closed smooth loop of the wall and cusps
-    { style: 'smooth', closed: true, color: '#ff7faa', members: [
+    { id: 'aortic_root', style: 'smooth', closed: true, color: '#ff7faa', members: [
       'ao_root_anterior_wall',
       'av_left_coronary_cusp',
       'av_non_coronary_cusp',
@@ -637,17 +641,17 @@ const PRESET_PLAX_NORMAL = {
       'av_right_coronary_cusp',
     ]},
     // Left atrium boundary — closed smooth loop
-    { style: 'smooth', closed: true, color: '#c88aff', members: [
+    { id: 'left_atrium', style: 'smooth', closed: true, color: '#c88aff', members: [
       'la_anterior_wall',
       'la_posterior_wall',
     ]},
     // RVOT — straight line (a flow tract, not a chamber)
-    { style: 'straight', closed: false, color: '#ffd45f', members: [
+    { id: 'rvot_tract', style: 'straight', closed: false, color: '#ffd45f', members: [
       'rvot_anterior',
       'rvot_center',
     ]},
     // Reference points — no connection (free)
-    { style: 'free', closed: false, color: '#ff9d5f', members: [
+    { id: 'reference_points', style: 'free', closed: false, color: '#ff9d5f', members: [
       'descending_aorta',
       'pericardium_apex',
     ]},
@@ -909,6 +913,8 @@ function bindUI() {
   // Export
   $('btnExportJson').onclick = exportJSON;
   $('btnExportSvg').onclick = exportSVG;
+  $('btnCopySimPrompt').onclick = copySimPrompt;
+  $('btnDownloadSimPrompt').onclick = downloadSimPrompt;
 
   // Canvas
   $('overlaySvg').addEventListener('contextmenu', onContextMenu);
@@ -966,6 +972,8 @@ function loadImageFile(file) {
       $('btnAddPoint').disabled = false;
       $('btnExportJson').disabled = false;
       $('btnExportSvg').disabled = false;
+      $('btnCopySimPrompt').disabled = false;
+      $('btnDownloadSimPrompt').disabled = false;
       $('btnComputeEdges').disabled = false;
       $('btnSnapAll').disabled = false;
       $('btnEraser').disabled = false;
@@ -2691,19 +2699,89 @@ function onKey(e) {
 // =====================================================================
 // EXPORT
 // =====================================================================
+//
+// Two export formats:
+//
+// 1. JSON (machine-readable) — full simulator spec including
+//    source, anatomy, topology, render hints, animation, measurements,
+//    and pathology. Optimized for CLI consumption (Gemini, Claude, etc.).
+//
+// 2. SVG (portable) — embedded image + landmarks, for sharing in
+//    documents or web pages.
+//
+// 3. Preset (configuration) — just the preset definition (no image),
+//    for sharing layouts between users.
+
 function buildExportData() {
+  const groups = state.presets[state.activePreset]?.groups || [];
+  const structures = inferStructures(groups);
+  const measurements = inferMeasurements(structures);
+  const path = inferPathology();
   return {
     tool: 'landmark-tool',
-    version: '1.0',
-    image: {
-      name: state.imageName,
-      width: state.naturalW,
-      height: state.naturalH,
+    version: '1.5',
+    schema: 'simulator-input/v1',  // tells consumers what format this is
+
+    // Source: where the landmarks came from
+    source: {
+      image: state.imageName || null,
+      imageWidth: state.naturalW,
+      imageHeight: state.naturalH,
+      view: inferView(),
+      phase: 'end-diastole',
+      calibration: state.pxPerCm ? { pxPerCm: +state.pxPerCm.toFixed(2) } : null,
     },
-    calibration: state.pxPerCm ? { pxPerCm: state.pxPerCm } : null,
+
+    // Anatomy: semantic interpretation of the landmarks
+    anatomy: {
+      name: path.name === 'normal' ? `${inferView() || 'Custom'} normal` : `${inferView() || 'Custom'} (${path.name})`,
+      description: path.description,
+      structures: structures,
+      walls: inferWalls(groups, structures),
+    },
+
+    // Topology: how the structures connect
+    topology: {
+      groups: groups.map(g => ({
+        id: g.id || g.name || `group_${Math.random().toString(36).slice(2,8)}`,
+        style: g.style,        // 'smooth' | 'straight' | 'free'
+        closed: !!g.closed,
+        color: g.color,
+        members: g.members,
+        renderAs: g.style === 'free' ? 'dots-only' : (g.closed ? 'closed-loop' : 'open-path'),
+      })),
+    },
+
+    // Rendering hints: visual style
+    renderHints: {
+      background: 'dark',
+      mimicEcho: false,                  // pixelated/textured walls
+      showLabels: true,
+      labelStyle: 'abbreviation',
+      defaultZoom: 1.0,
+      cssTheme: 'dark',
+      dotSize: 7,
+      labelFontSize: 11,
+      curveTension: 0.5,
+    },
+
+    // Animation: whether this is a static frame or part of a cycle
+    animation: {
+      type: 'static',
+      cycleFrames: [],
+    },
+
+    // Measurements: clinical calipers the simulator should support
+    measurements: measurements,
+
+    // Pathology: what variant this represents and what it can be compared to
+    pathology: path,
+
+    // Raw landmark data (for the simulator to use directly)
     landmarks: state.landmarks.map(l => ({
       id: l.id,
       name: l.name,
+      group: l.group,
       type: l.type,
       x: +l.x.toFixed(2),
       y: +l.y.toFixed(2),
@@ -2711,14 +2789,335 @@ function buildExportData() {
       x_cm: state.pxPerCm ? +(l.x / state.pxPerCm).toFixed(3) : null,
       y_cm: state.pxPerCm ? +(l.y / state.pxPerCm).toFixed(3) : null,
     })),
+
     exportedAt: new Date().toISOString(),
   };
 }
 
+// Infer the view name from the active preset (PLAX, PSAX, A4C, etc.)
+function inferView() {
+  const name = (state.activePreset || '').toLowerCase();
+  if (name.includes('plax')) return 'PLAX';
+  if (name.includes('psax')) return 'PSAX';
+  if (name.includes('a4c')) return 'A4C';
+  if (name.includes('a2c')) return 'A2C';
+  if (name.includes('subcostal')) return 'Subcostal';
+  if (name.includes('cxr')) return 'CXR';
+  if (name.includes('ct')) return 'CT';
+  return null;
+}
+
+// Infer anatomical structures from the topology groups. Each group
+// becomes a structure with render hints based on its name/type.
+function inferStructures(groups) {
+  if (!groups || groups.length === 0) return [];
+  const out = [];
+  for (const g of groups) {
+    const id = g.id || g.name || 'group';
+    const lc = id.toLowerCase();
+    let type = 'reference';
+    let renderOrder = 4;
+    let interiorColor = '#0a0a12';
+    let motion = null;
+    if (lc.includes('lv_cavity') || lc.includes('lv')) {
+      type = 'chamber';
+      renderOrder = 2;
+      interiorColor = '#1a0a1f';
+    } else if (lc.includes('la') || lc.includes('atrium')) {
+      type = 'chamber';
+      renderOrder = 2;
+      interiorColor = '#1a0a1f';
+    } else if (lc.includes('rvot') || lc.includes('rv')) {
+      type = 'chamber';
+      renderOrder = 2;
+      interiorColor = '#1a0a1f';
+    } else if (lc.includes('aortic') || lc.includes('ao_')) {
+      type = 'vessel';
+      renderOrder = 3;
+      interiorColor = '#1a0a1f';
+    } else if (lc.includes('mv') || lc.includes('mitral')) {
+      type = 'valve';
+      renderOrder = 5;
+      motion = 'closed-in-systole, open-in-diastole';
+    } else if (lc.includes('av') || lc.includes('aortic_valve')) {
+      type = 'valve';
+      renderOrder = 5;
+      motion = 'open-in-systole, closed-in-diastole';
+    } else if (lc.includes('pericardium')) {
+      type = 'reference';
+      renderOrder = 1;
+    }
+    out.push({
+      id,
+      name: humanizeName(id),
+      type,
+      color: g.color,
+      interiorColor,
+      renderOrder,
+      memberCount: g.members.length,
+      motion,
+    });
+  }
+  return out;
+}
+
+// Infer walls (anatomical structures with thickness)
+function inferWalls(groups, structures) {
+  if (!groups) return [];
+  const walls = [];
+  for (const g of groups) {
+    const id = g.id || g.name || '';
+    const lc = id.toLowerCase();
+    if (lc.includes('lv') || lc.includes('septum') || lc.includes('posterior_wall') || lc.includes('wall')) {
+      walls.push({
+        name: humanizeName(id),
+        members: g.members,
+        type: 'soft-tissue',
+        thickness: '~1 cm normal adult',
+        renderOrder: 3,
+      });
+    }
+  }
+  return walls;
+}
+
+// Infer standard clinical measurements from the available structures
+function inferMeasurements(structures) {
+  const out = [];
+  const hasLV = structures.some(s => /lv|left.ventricle/i.test(s.id));
+  const hasMV = structures.some(s => /mv|mitral/i.test(s.id));
+  const hasAV = structures.some(s => /av|aortic.valve/i.test(s.id));
+  if (hasLV) {
+    out.push({
+      name: 'LVIDd',
+      fullName: 'Left Ventricular Internal Diameter at end-Diastole',
+      from: 'septum_basal',
+      to: 'posterior_wall_basal',
+      expected: '4.0-5.6 cm (normal adult)',
+      clinicalSignificance: 'Increased in dilated cardiomyopathy. Decreased in HOCM.',
+    });
+    out.push({
+      name: 'IVSd',
+      fullName: 'Interventricular Septal thickness at end-Diastole',
+      from: 'lv_cavity_septum_inner',
+      to: 'septum_basal',
+      expected: '0.7-1.1 cm (normal adult)',
+      clinicalSignificance: 'Increased in HOCM, hypertensive heart disease.',
+    });
+    out.push({
+      name: 'LVPWd',
+      fullName: 'Left Ventricular Posterior Wall thickness at end-Diastole',
+      from: 'lv_cavity_wall_inner',
+      to: 'posterior_wall_basal',
+      expected: '0.7-1.1 cm (normal adult)',
+      clinicalSignificance: 'Increased in concentric hypertrophy.',
+    });
+  }
+  if (hasAV) {
+    out.push({
+      name: 'AV area',
+      fullName: 'Aortic Valve area (planimetered)',
+      from: null,
+      to: null,
+      expected: '2.5-4.0 cm² (normal adult)',
+      clinicalSignificance: '<1.0 cm² indicates severe aortic stenosis.',
+    });
+  }
+  if (hasMV) {
+    out.push({
+      name: 'MV E-point',
+      fullName: 'Mitral Valve E-point septal separation (EPSS)',
+      from: 'mv_anterior_leaflet_tip',
+      to: 'septum_basal',
+      expected: '<7 mm (normal)',
+      clinicalSignificance: 'Increased in LV dysfunction.',
+    });
+  }
+  return out;
+}
+
+// Infer pathology from preset name and any tags
+function inferPathology() {
+  const name = (state.activePreset || '').toLowerCase();
+  if (name.includes('normal')) {
+    return {
+      name: 'normal',
+      description: 'Normal anatomical reference',
+      comparisons: [],
+    };
+  }
+  if (name.includes('hocm') || name.includes('hypertrophic')) {
+    return {
+      name: 'HOCM',
+      description: 'Hypertrophic Obstructive Cardiomyopathy — asymmetric septal hypertrophy',
+      comparisons: [],
+    };
+  }
+  if (name.includes('dilated') || name.includes('dcm')) {
+    return {
+      name: 'dilated',
+      description: 'Dilated cardiomyopathy — enlarged LV, thin walls',
+      comparisons: [],
+    };
+  }
+  if (name.includes('as') || name.includes('aortic_stenosis')) {
+    return {
+      name: 'AS',
+      description: 'Aortic stenosis — thickened AV leaflets, restricted motion',
+      comparisons: [],
+    };
+  }
+  if (name.includes('effusion') || name.includes('pe')) {
+    return {
+      name: 'effusion',
+      description: 'Pericardial effusion — fluid in pericardial space',
+      comparisons: [],
+    };
+  }
+  return {
+    name: 'custom',
+    description: 'User-defined anatomy',
+    comparisons: [],
+  };
+}
+
+// Convert snake_case to Title Case
+function humanizeName(s) {
+  if (!s) return '';
+  return s.split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 function exportJSON() {
   const data = buildExportData();
-  download(JSON.stringify(data, null, 2), `${state.imageName || 'landmarks'}.landmarks.json`, 'application/json');
-  setStatus(`Exported ${data.landmarks.length} landmarks to JSON.`, 'ok');
+  const fname = `${state.imageName || 'landmarks'}.simulator-spec.json`;
+  download(JSON.stringify(data, null, 2), fname, 'application/json');
+  setStatus(`Exported simulator spec to ${fname} (${data.landmarks.length} landmarks, ${data.anatomy.structures.length} structures, ${data.measurements.length} measurements).`, 'ok');
+}
+
+// Build a ready-to-paste prompt for a CLI (Gemini, Claude, etc.) to
+// generate a clinical simulator from the spec. The prompt includes:
+//   - Context (what kind of simulator, who is it for)
+//   - Embedded JSON spec
+//   - Required features (rendering, calipers, animation if applicable)
+//   - Verification checklist
+function buildSimPrompt() {
+  const data = buildExportData();
+  const json = JSON.stringify(data, null, 2);
+  const view = data.source.view || 'Custom';
+  const path = data.pathology.name;
+  const v = data.source.view;
+  return `# Build a clinical simulator from this spec
+
+## What this is
+
+A clinical teaching simulator for **${data.anatomy.name}**${path !== 'normal' && path !== 'custom' ? ` (${path})` : ''}.
+Target audience: **postgraduate medical residents and intensivists** learning to interpret ${v || 'medical imaging'}.
+
+## Output format
+
+A **single self-contained HTML file** with embedded CSS and JavaScript.
+No frameworks, no build step, no external dependencies. Should run by double-clicking.
+The file should follow the same architectural pattern as the landmark tool that produced this spec.
+
+## Source data (read this carefully)
+
+\`\`\`json
+${json}
+\`\`\`
+
+## Required features
+
+1. **Render the anatomy** as a 2D canvas/SVG using the landmark coordinates:
+   - ${data.anatomy.structures.length} structures defined in \`anatomy.structures\`
+   - Use the topology from \`topology.groups\` — smooth curves (Catmull-Rom) for walls, straight lines for valve annuli, dots only for free reference points
+   - Apply render order from \`anatomy.structures[].renderOrder\` (background → chambers → walls → valves)
+   - Use \`interiorColor\` from each chamber structure for the blood pool fill
+
+2. **Clinical labels** following \`renderHints.labelStyle\`:
+   - Use abbreviations (e.g., "LV", "LA", "MV", "AV", "RVOT")
+   - Position labels outside the chamber, with paint-order: stroke for readability
+   - Match colors to \`topology.groups[].color\`
+
+3. **Interactive calipers** for each measurement in \`measurements\`:
+   - User clicks two landmarks → distance displayed
+   - Show the expected value from \`measurements[].expected\` (e.g., "4.0-5.6 cm")
+   - Show clinical significance from \`measurements[].clinicalSignificance\` on hover
+   - Specifically support: ${data.measurements.map(m => '`' + m.name + '`').join(', ')}
+
+4. **Pathology-aware**:
+   - This is a **${path}** case${data.pathology.description ? ': ' + data.pathology.description : ''}
+   ${path === 'normal' ? `- For normal cases, no special pathology UI needed
+   - But support toggling comparison views if \`pathology.comparisons\` is non-empty` : `- Show the pathology state clearly (e.g., septal bulge, chamber enlargement, leaflet thickening)
+   - Include a toggle to switch between normal and this pathology for comparison
+   - Highlight the structures that are abnormal`}
+
+5. **Calibration**:
+   - If \`source.calibration\` is set, use \`pxPerCm\` to display distances in cm
+   - Landmarks should show their cm coordinates in the sidebar
+
+6. **Dark theme** as specified in \`renderHints.cssTheme\`
+   - Background: #050507
+   - Text: #c8c8ce
+   - Accents: use the structure colors
+
+## Architectural pattern to follow
+
+Use the same pattern as the existing landmark tool at https://github.com/sunilchhajwani/landmark-tool:
+- Single HTML file
+- Vanilla JS, no frameworks
+- state object holds all mutable state
+- render functions for canvas, sidebar, status
+- Event handlers delegate based on mode
+
+## Verification checklist
+
+Before declaring done, verify:
+- [ ] All ${data.landmarks.length} landmarks render at the correct positions
+- [ ] ${data.anatomy.structures.length} structures visually distinguishable
+- [ ] Calipers work for at least LVIDd${data.measurements.find(m => m.name === 'IVSd') ? ', IVSd' : ''}${data.measurements.find(m => m.name === 'LVPWd') ? ', LVPWd' : ''}${data.measurements.find(m => m.name === 'MV E-point') ? ', MV E-point' : ''}
+- [ ] Distances display in cm (or px if no calibration)
+- [ ] No console errors when opened
+- [ ] Dark theme matches spec
+- [ ] Works offline (no external requests)
+- [ ] File size under 100KB
+
+## Testing
+
+Open the HTML file in Chrome/Firefox/Safari. Test the caliper feature by clicking two related landmarks. Verify measurements match the expected ranges in \`measurements\`.
+
+## Notes for the LLM
+
+- ${data.anatomy.structures.length} structures is a lot — render them in z-order, not in declaration order
+- Use Catmull-Rom math for smooth curves (algorithm: for each segment, compute tangent from previous and next point, convert to cubic Bézier)
+- Don't fabricate image content from scratch — use the landmark coordinates as ground truth
+- The simulator is for **teaching**, so prioritize clarity over realism
+- The clinical measurements are the most important interactive feature — make them prominent and easy to use
+`;
+}
+
+function copySimPrompt() {
+  const prompt = buildSimPrompt();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(prompt).then(
+      () => setStatus('Sim prompt copied to clipboard. Paste into Gemini/Claude CLI.', 'ok'),
+      () => fallbackDownload(prompt)
+    );
+  } else {
+    fallbackDownload(prompt);
+  }
+}
+
+function fallbackDownload(prompt) {
+  const fname = `${state.imageName || 'landmarks'}.sim-prompt.md`;
+  download(prompt, fname, 'text/markdown');
+  setStatus(`Clipboard not available — downloaded ${fname} instead.`, 'warn');
+}
+
+function downloadSimPrompt() {
+  const prompt = buildSimPrompt();
+  const fname = `${state.imageName || 'landmarks'}.sim-prompt.md`;
+  download(prompt, fname, 'text/markdown');
+  setStatus(`Downloaded simulator prompt to ${fname}.`, 'ok');
 }
 
 function exportSVG() {
