@@ -410,6 +410,14 @@
             <option value="60">60 px (very wide)</option>
           </select>
         </div>
+        <div class="row" style="margin-top:6px">
+          <label>Trace labels</label>
+          <select id="traceLabelModeSel">
+            <option value="off" selected>Off (dots only — clean)</option>
+            <option value="on">On (with names)</option>
+            <option value="numbered">Numbered (1, 2, 3…)</option>
+          </select>
+        </div>
         <div class="btn-row" style="margin-top:6px">
           <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
           <button id="btnClearAll" class="danger" disabled>Clear all</button>
@@ -539,6 +547,7 @@ const state = {
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
+  traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -847,6 +856,10 @@ function bindUI() {
   };
   $('traceSnapWidthSel').onchange = (e) => {
     state.traceSnapWidth = parseInt(e.target.value) || 25;
+  };
+  $('traceLabelModeSel').onchange = (e) => {
+    state.traceLabelMode = e.target.value;
+    render();
   };
 
   // Export
@@ -2153,7 +2166,19 @@ function renderLandmarks() {
     if (isPreview) c.setAttribute('opacity', 0.6);
     g.appendChild(c);
 
-    if (state.showLabels && !isPreview) {
+    // Label rendering. Default: skip labels for trace points (clutter-free).
+    // Modes: 'off' = no labels (dots only), 'on' = full name, 'numbered' = 1, 2, 3...
+    const isTrace = lm.group === 'trace' || /^trace_\d+$/.test(lm.name);
+    let showThisLabel = state.showLabels && !isPreview;
+    let labelText = lm.name;
+    if (isTrace && state.traceLabelMode === 'off') {
+      showThisLabel = false;
+    } else if (isTrace && state.traceLabelMode === 'numbered') {
+      // Extract number from name like "trace_001" -> "1"
+      const m = lm.name.match(/^trace_(\d+)$/);
+      labelText = m ? String(parseInt(m[1], 10)) : lm.name;
+    }
+    if (showThisLabel) {
       const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       t.setAttribute('x', lm.x + r + 4);
       t.setAttribute('y', lm.y - r - 2);
@@ -2163,7 +2188,7 @@ function renderLandmarks() {
       t.setAttribute('paint-order', 'stroke');
       t.setAttribute('stroke', '#000000');
       t.setAttribute('stroke-width', '3');
-      t.textContent = lm.name;
+      t.textContent = labelText;
       g.appendChild(t);
     }
     svg.appendChild(g);
