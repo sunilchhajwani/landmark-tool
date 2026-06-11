@@ -2421,17 +2421,35 @@ function renderLandmarks() {
     if (isPreview) c.setAttribute('opacity', 0.6);
     g.appendChild(c);
 
-    // Label rendering. Default: skip labels for trace points (clutter-free).
-    // Modes: 'off' = no labels (dots only), 'on' = full name, 'numbered' = 1, 2, 3...
-    const isTrace = lm.group === 'trace' || /^trace_\d+$/.test(lm.name);
+    // Label rendering. A landmark is a "trace" point if either:
+    //   - it has the legacy group string "trace", or
+    //   - its name starts with "trace_", or
+    //   - it belongs to a named trace group registered in state.traceGroups
+    //     (e.g. "lv_endocardium" → point "lv_endocardium_3").
+    // Trace points obey the "Trace labels" dropdown:
+    //   - 'off' (default) → no labels (dots only, clean)
+    //   - 'on' → full name (e.g. "lv_endocardium_3")
+    //   - 'numbered' → just the sequence number ("3")
+    const isTrace = lm.group === 'trace' ||
+                    /^trace_\d+$/.test(lm.name) ||
+                    (lm.group && state.traceGroups && state.traceGroups[lm.group]);
     let showThisLabel = state.showLabels && !isPreview;
     let labelText = lm.name;
-    if (isTrace && state.traceLabelMode === 'off') {
-      showThisLabel = false;
-    } else if (isTrace && state.traceLabelMode === 'numbered') {
-      // Extract number from name like "trace_001" -> "1"
-      const m = lm.name.match(/^trace_(\d+)$/);
-      labelText = m ? String(parseInt(m[1], 10)) : lm.name;
+    if (isTrace) {
+      if (state.traceLabelMode === 'off') {
+        showThisLabel = false;
+      } else if (state.traceLabelMode === 'numbered') {
+        // Try named-trace sequence first ("lv_endocardium_3" -> "3"),
+        // fall back to legacy "trace_001" -> "1".
+        const m1 = lm.name.match(/_(\d+)$/);
+        if (m1) {
+          labelText = String(parseInt(m1[1], 10));
+        } else {
+          const m2 = lm.name.match(/^trace_(\d+)$/);
+          labelText = m2 ? String(parseInt(m2[1], 10)) : lm.name;
+        }
+      }
+      // 'on' falls through with the full name.
     }
     if (showThisLabel) {
       const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
