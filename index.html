@@ -2814,36 +2814,37 @@ function inferStructures(groups) {
   const out = [];
   for (const g of groups) {
     const id = g.id || g.name || 'group';
-    const lc = id.toLowerCase();
+    // Use word boundaries for matching so 'valve' doesn't match 'lv' etc.
+    const lc = (' ' + id.toLowerCase() + ' ').replace(/[_-]/g, ' ');
+    const has = (kw) => lc.includes(' ' + kw + ' ') || lc.includes(kw + '_') || lc.includes('_' + kw);
     let type = 'reference';
     let renderOrder = 4;
     let interiorColor = '#0a0a12';
     let motion = null;
-    if (lc.includes('lv_cavity') || lc.includes('lv')) {
+    // Check valves FIRST so they don't get classified as chambers
+    if (has('valve') || has('mitral') || has('mv') || has('av') || has('tricuspid') || has('tv') || has('pv')) {
+      type = 'valve';
+      renderOrder = 5;
+      motion = has('mitral') || has('mv') || has('tricuspid') || has('tv')
+        ? 'closed-in-systole, open-in-diastole'
+        : 'open-in-systole, closed-in-diastole';
+    } else if (has('lv') || has('left_ventricle') || has('ventricle')) {
       type = 'chamber';
       renderOrder = 2;
       interiorColor = '#1a0a1f';
-    } else if (lc.includes('la') || lc.includes('atrium')) {
+    } else if (has('la') || has('atrium') || has('left_atrium') || has('right_atrium')) {
       type = 'chamber';
       renderOrder = 2;
       interiorColor = '#1a0a1f';
-    } else if (lc.includes('rvot') || lc.includes('rv')) {
+    } else if (has('rvot') || has('rv') || has('right_ventricle')) {
       type = 'chamber';
       renderOrder = 2;
       interiorColor = '#1a0a1f';
-    } else if (lc.includes('aortic') || lc.includes('ao_')) {
+    } else if (has('aortic') || has('ao_')) {
       type = 'vessel';
       renderOrder = 3;
       interiorColor = '#1a0a1f';
-    } else if (lc.includes('mv') || lc.includes('mitral')) {
-      type = 'valve';
-      renderOrder = 5;
-      motion = 'closed-in-systole, open-in-diastole';
-    } else if (lc.includes('av') || lc.includes('aortic_valve')) {
-      type = 'valve';
-      renderOrder = 5;
-      motion = 'open-in-systole, closed-in-diastole';
-    } else if (lc.includes('pericardium')) {
+    } else if (has('pericardium')) {
       type = 'reference';
       renderOrder = 1;
     }
