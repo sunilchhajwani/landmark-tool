@@ -3024,6 +3024,10 @@ function buildSimPrompt() {
   const data = buildExportData();
   const json = JSON.stringify(data, null, 2);
   const ctx = inferPromptContext(data);
+  // DEBUG
+  if (window.__debugSimPrompt) {
+    console.log('[buildSimPrompt] activePreset:', state.activePreset, 'ctx.isMedical:', ctx.isMedical, 'groupIds:', data.topology.groups.map(g => g.id), 'landmarkNames:', data.landmarks.map(l => l.name));
+  }
   return `# Build a clinical simulator from this spec
 
 ## What this is
@@ -3111,13 +3115,21 @@ function inferPromptContext(data) {
   const groupIds = (data.topology?.groups || []).map(g => (g.id || '').toLowerCase());
 
   // Detect if this is medical (echo, CXR, CT, etc.) vs generic (chart, photo, diagram)
+  // Use word-boundary matching so 'la' doesn't match 'range' or 'lavender',
+  // and 'ra' doesn't match 'range' or 'tray'.
   const medicalKeywords = ['lv', 'rv', 'la', 'ra', 'mv', 'av', 'tv', 'pv', 'aortic', 'mitral',
                            'tricuspid', 'pulmonic', 'septum', 'pericardium', 'effusion',
                            'plax', 'psax', 'a4c', 'a2c', 'cxr', 'echo', 'valve', 'atrium',
                            'ventricle', 'heart', 'lung', 'thorax', 'chest', 'abdomen',
-                           'brain', 'skull', 'ventricle', 'cistern'];
-  const isMedical = landmarkNames.some(n => medicalKeywords.some(k => n.toLowerCase().includes(k)))
-                    || groupIds.some(g => medicalKeywords.some(k => g.includes(k)));
+                           'brain', 'skull', 'cistern'];
+  function hasMedicalMatch(text) {
+    // Normalize: replace underscores/hyphens with spaces, pad with spaces,
+    // then check if any keyword appears as a whole word.
+    const t = ' ' + String(text).toLowerCase().replace(/[_-]/g, ' ').replace(/[^a-z0-9 ]/g, ' ') + ' ';
+    return medicalKeywords.some(k => t.includes(' ' + k + ' '));
+  }
+  const isMedical = landmarkNames.some(n => hasMedicalMatch(n))
+                    || groupIds.some(g => hasMedicalMatch(g));
 
   // Detect cycle/animation needs
   const hasCycle = data.animation?.type === 'cycle'
