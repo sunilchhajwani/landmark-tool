@@ -204,6 +204,26 @@
     position: absolute; pointer-events: none; z-index: 11;
   }
 
+  /* Trace-group polylines (rendered between landmarks that share a
+     user-named trace group, e.g. "lv_endocardium"). Drawn under the
+     landmark circles so the dots stay on top. */
+  .trace-polyline {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.85;
+    pointer-events: stroke;  /* allow right-click on the line for insert */
+    cursor: copy;
+  }
+  .trace-polyline.live {
+    stroke-dasharray: 4 3;
+    opacity: 0.9;
+    pointer-events: none;     /* live preview doesn't accept clicks */
+  }
+  .trace-polyline.closed {
+    /* closed traces are drawn as a loop — same line, just sealed */
+  }
+
   /* Eraser brush cursor (SVG circle following the mouse) */
   #eraserCursor {
     position: absolute; pointer-events: none; z-index: 13;
@@ -599,6 +619,9 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
+  traceGroupCounter: {},   // {groupName: nextSeq} for "<name>_1, _2, _3..." naming
+  traceGroups: {},         // {groupName: {style, closed, color, members: [lmName,...]}}
+                            // populated when user names a trace, used by render + export
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
@@ -882,6 +905,8 @@ function bindUI() {
       state.landmarks = []; state.selectedId = null;
       state.eraserLastSweep = null; state.traceLastBatch = null;
       state.traceBatchCounter = 0;
+      state.traceGroupCounter = {};
+      state.traceGroups = {};
       $('btnUndoErase').disabled = true;
       renderAll();
     }
@@ -1953,8 +1978,9 @@ function beginTrace(x, y) {
   state.traceLastPoint = null;
   // Place the first point immediately
   addTracePoint(x, y, true);
-  // Update preview
+  // Update preview + repaint (so the live polyline appears under the dots)
   updateTracePreview();
+  render();
 }
 
 function continueTrace(x, y) {
@@ -1972,6 +1998,7 @@ function continueTrace(x, y) {
     }
   }
   updateTracePreview();
+  render();
 }
 
 function endTrace() {
@@ -1980,12 +2007,59 @@ function endTrace() {
     clearTracePreview();
     return;
   }
+  // If the trace has >=2 points, prompt for a group name. The name flows
+  // into the export topology (so e.g. "lv_endocardium" becomes a real
+  // exported wall, not a dead-end 'trace' group). The user can hit
+  // Cancel or leave blank to keep the auto-generated trace_NNN naming.
+  if (state.tracePoints.length >= 2) {
+    const defaultName = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
+    const entered = prompt(
+      `Name this trace (${state.tracePoints.length} points)?\n` +
+      `Used for export topology — e.g. "lv_endocardium", "mv_annulus".\n` +
+      `Leave blank to keep "${defaultName}".`,
+      defaultName
+    );
+    if (entered && entered.trim()) {
+      const gname = entered.trim().toLowerCase().replace(/\s+/g, '_');
+      relabelTraceBatch(gname);
+      // Register the group for rendering and export. If the group already
+      // exists from an earlier batch, append the new members to it
+      // instead of overwriting — this is how multi-segment traces for the
+      // same structure (e.g. continued after a pause) stay connected.
+      const newMembers = state.tracePoints.map(l => l.name);
+      if (state.traceGroups[gname]) {
+        state.traceGroups[gname].members =
+          state.traceGroups[gname].members.concat(newMembers);
+      } else {
+        state.traceGroups[gname] = {
+          style: 'smooth',         // default; user can edit later
+          closed: false,
+          color: state.traceColor,
+          members: newMembers,
+        };
+      }
+      setStatus(
+        `Trace "${gname}" placed (${state.tracePoints.length} pts). ` +
+        `↶ Undo removes the whole trace.`,
+        'ok'
+      );
+    } else {
+      setStatus(
+        `Trace placed ${state.tracePoints.length} point${state.tracePoints.length === 1 ? '' : 's'}. ` +
+        `Click ↶ Undo to remove them all.`,
+        'warn'
+      );
+    }
+  } else {
+    setStatus(
+      `Trace placed 1 point (need ≥2 to draw a line). Click ↶ Undo to remove.`,
+      'warn'
+    );
+  }
   state.traceLastBatch = state.tracePoints.slice();
   // Note: don't touch state.eraserLastSweep — eraser and trace have
   // independent undo states. The Undo button checks both.
   $('btnUndoErase').disabled = false;
-  const count = state.tracePoints.length;
-  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all.`, 'warn');
   state.tracePoints = [];
   state.tracePreview = [];
   state.traceLastPoint = null;
@@ -1994,13 +2068,44 @@ function endTrace() {
   renderAll();
 }
 
+// Rename every point in the current trace batch to "<group>_1, _2, _3..."
+// and set their group to the new name. Uses the per-group sequence
+// counter so re-naming the same group later continues the numbering.
+function relabelTraceBatch(gname) {
+  const seq = state.traceGroupCounter[gname] || 1;
+  state.traceGroupCounter[gname] = seq + state.tracePoints.length;
+  for (let i = 0; i < state.tracePoints.length; i++) {
+    const lm = state.tracePoints[i];
+    lm.name = `${gname}_${seq + i}`;
+    lm.group = gname;
+  }
+}
+
 function undoLastTrace() {
   if (!state.traceLastBatch || state.traceLastBatch.length === 0) return;
+  // Remember which group(s) were touched so we can clean up empty entries
+  const touchedGroups = new Set();
+  for (const lm of state.traceLastBatch) {
+    if (lm.group) touchedGroups.add(lm.group);
+  }
   // Remove all the trace points
   const idsToRemove = new Set(state.traceLastBatch.map(l => l.id));
   state.landmarks = state.landmarks.filter(l => !idsToRemove.has(l.id));
   // Decrement counter back by the number removed
   state.traceBatchCounter = Math.max(0, state.traceBatchCounter - state.traceLastBatch.length);
+  // If any of the touched trace groups are now empty, remove them.
+  for (const gname of touchedGroups) {
+    const tg = state.traceGroups[gname];
+    if (!tg) continue;
+    const remaining = tg.members.filter(nm =>
+      state.landmarks.find(l => l.name === nm)
+    );
+    if (remaining.length === 0) {
+      delete state.traceGroups[gname];
+    } else {
+      tg.members = remaining;
+    }
+  }
   const count = state.traceLastBatch.length;
   state.traceLastBatch = null;
   // Disable undo if no more batches
@@ -2161,7 +2266,72 @@ function renderAll() { renderList(); render(); }
 
 function render() {
   renderLandmarks();
+  renderTracePolylines();
   renderStatus();
+}
+
+// Draw polylines connecting landmarks that share a user-named trace
+// group (e.g. "lv_endocardium"). Drawn before landmark circles so the
+// dots render on top. Skipped in Preview mode to match connection style.
+//
+// Also draws the in-progress trace live: connects tracePoints in their
+// current placement order using the current trace color.
+function renderTracePolylines() {
+  const svg = $('overlaySvg');
+  // Remove any previously rendered polyline elements (they live in the
+  // same SVG as connections/landmarks, so we have to filter rather than
+  // clear the whole svg).
+  svg.querySelectorAll('.trace-polyline').forEach(el => el.remove());
+
+  if (isPreviewMode()) return; // same convention as computeConnections
+  const W = svg.clientWidth, H = svg.clientHeight;
+  if (!W || !H) return;
+
+  // Group landmarks by their group string, in order
+  const byGroup = {};
+  for (const lm of state.landmarks) {
+    if (!lm.group) continue;
+    if (!byGroup[lm.group]) byGroup[lm.group] = [];
+    byGroup[lm.group].push(lm);
+  }
+
+  // Draw one polyline per named trace group registered in state.traceGroups
+  for (const gname of Object.keys(state.traceGroups)) {
+    const tg = state.traceGroups[gname];
+    const pts = (tg.members || []).map(nm => state.landmarks.find(l => l.name === nm)).filter(Boolean);
+    if (pts.length < 2) continue;
+    const closed = !!tg.closed;
+    const color = tg.color || '#5fb8ff';
+    drawTracePolyline(svg, pts, color, closed, gname);
+  }
+
+  // Live in-progress trace (no name yet, just visual feedback)
+  if (state.traceActive && state.tracePoints && state.tracePoints.length >= 2) {
+    drawTracePolyline(svg, state.tracePoints, state.traceColor, false, '__live__', /*live*/ true);
+  }
+}
+
+function drawTracePolyline(svg, pts, color, closed, groupName, live) {
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const path = document.createElementNS(SVG_NS, 'path');
+  // Straight-line polyline for trace groups (matches "free point" → "polyline"
+  // intent; export can choose to upgrade to smooth via the topology hint).
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  for (let i = 1; i < pts.length; i++) {
+    d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`;
+  }
+  if (closed) d += ' Z';
+  path.setAttribute('d', d);
+  path.setAttribute('stroke', color);
+  path.setAttribute('stroke-width', '2.5');
+  path.setAttribute('class', 'trace-polyline' + (live ? ' live' : '') + (closed ? ' closed' : ''));
+  if (groupName) path.dataset.group = groupName;
+  // Always append, then move to position 0 so the polyline is BELOW the
+  // landmark circles in z-order. (renderLandmarks clears the SVG, so we
+  // run AFTER it in render(); prepending relative to the first landmark
+  // would re-insert above them, which is the wrong z-order.)
+  svg.appendChild(path);
+  if (svg.firstChild) svg.insertBefore(path, svg.firstChild);
 }
 
 function renderLandmarks() {
@@ -2553,8 +2723,66 @@ function onMouseMove(e) {
     const p = screenToImage(e.clientX, e.clientY);
     const lm = state.landmarks.find(l => l.id === dragState.id);
     if (lm) {
-      lm.x = p.x - dragState.offsetX;
-      lm.y = p.y - dragState.offsetY;
+      // Default: free move
+      let nx = p.x - dragState.offsetX;
+      let ny = p.y - dragState.offsetY;
+      // Re-snap to nearest edge if the landmark belongs to a named trace
+      // group (so nudging a traced point doesn't drag it off the wall).
+      // We use the local path-tangent snap when the snap mode is "path"
+      // or "radius" — i.e. the user opted into edge snapping — and the
+      // edge map is ready.
+      const tg = state.traceGroups && state.traceGroups[lm.group];
+      if (tg && state.snapEnabled && state.edgeReady &&
+          state.traceSnapMode !== 'off' && state.snapRadius) {
+        // Local tangent = direction from previous member to next member
+        // (using the order in traceGroups.members). If at the ends, use
+        // the single neighbor; if isolated (length 1 group), use the
+        // lookback-style tangent from the prior placed point if any.
+        const idx = tg.members.indexOf(lm.name);
+        const prevName = idx > 0 ? tg.members[idx - 1] : null;
+        const nextName = idx >= 0 && idx < tg.members.length - 1 ? tg.members[idx + 1] : null;
+        const prevLm = prevName ? state.landmarks.find(l => l.name === prevName) : null;
+        const nextLm = nextName ? state.landmarks.find(l => l.name === nextName) : null;
+        const a = prevLm || nextLm;
+        const b = nextLm || prevLm;
+        // Populate a synthetic "tracePreview" so the path-snap helper
+        // computes a sensible tangent for the dragged point.
+        if (a && b && a !== b) {
+          // Two-sided: use midpoint between a and b as the "lookback"
+          // and the dragged point as the "current".
+          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          const saved = state.tracePreview;
+          state.tracePreview = [{ x: mx, y: my }, { x: nx, y: ny }];
+          let result;
+          if (state.traceSnapMode === 'path') {
+            result = snapToNearestEdgeAlongPath(nx, ny, state.traceSnapWidth);
+          } else {
+            result = snapToNearestEdge(nx, ny, state.snapRadius);
+          }
+          state.tracePreview = saved;
+          if (result.magnitude > 0) {
+            nx = result.x;
+            ny = result.y;
+          }
+        } else if (a) {
+          // One-sided: tangent along (a -> drag point)
+          const saved = state.tracePreview;
+          state.tracePreview = [{ x: a.x, y: a.y }, { x: nx, y: ny }];
+          let result;
+          if (state.traceSnapMode === 'path') {
+            result = snapToNearestEdgeAlongPath(nx, ny, state.traceSnapWidth);
+          } else {
+            result = snapToNearestEdge(nx, ny, state.snapRadius);
+          }
+          state.tracePreview = saved;
+          if (result.magnitude > 0) {
+            nx = result.x;
+            ny = result.y;
+          }
+        }
+      }
+      lm.x = nx;
+      lm.y = ny;
       if (state.snapToGrid && state.pxPerCm) {
         const gridPx = state.pxPerCm * state.gridSpacing;
         lm.x = Math.round(lm.x / gridPx) * gridPx;
@@ -2624,12 +2852,139 @@ function onWheel(e) {
 // =====================================================================
 function onContextMenu(e) {
   e.preventDefault();
-  const target = e.target.closest('.landmark-group');
-  if (target) {
-    showContextMenu(e.clientX, e.clientY, parseInt(target.dataset.id));
+  const lmTarget = e.target.closest('.landmark-group');
+  const polyTarget = e.target.closest('.trace-polyline');
+  if (lmTarget) {
+    showContextMenu(e.clientX, e.clientY, parseInt(lmTarget.dataset.id));
+  } else if (polyTarget && !polyTarget.classList.contains('live')) {
+    // Right-click on a named trace polyline → offer to insert a point
+    // on the line at the click position, snapped to the nearest edge
+    // along the line direction.
+    showTraceLineContextMenu(e.clientX, e.clientY, polyTarget.dataset.group);
   } else {
     showContextMenu(e.clientX, e.clientY, null);
   }
+}
+
+function showTraceLineContextMenu(x, y, groupName) {
+  const menu = $('ctxmenu');
+  menu.innerHTML = '';
+  const tg = state.traceGroups[groupName];
+  if (!tg) {
+    // Defensive: if the group is gone (e.g. cleared), fall through
+    showContextMenu(x, y, null);
+    return;
+  }
+  addMenuItem(menu, `➕ Insert point on "${groupName}"`, () => {
+    const p = screenToImage(x, y);
+    insertPointOnTrace(groupName, p.x, p.y);
+  });
+  addMenuItem(menu, `🗑 Delete trace "${groupName}" (${tg.members.length} pts)`, () => {
+    deleteTraceGroup(groupName);
+  }, true);
+  addMenuSep(menu);
+  addMenuItem(menu, `Toggle close "${groupName}"`, () => {
+    tg.closed = !tg.closed;
+    setStatus(`Trace "${groupName}" is now ${tg.closed ? 'closed' : 'open'}.`, 'ok');
+    renderAll();
+  });
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.style.display = 'block';
+}
+
+// Insert a new landmark at the click position into the named trace
+// group, preserving order. The new point is placed in `members` between
+// the two existing members whose segment the click is closest to.
+function insertPointOnTrace(groupName, x, y) {
+  const tg = state.traceGroups[groupName];
+  if (!tg) return;
+  // Find the segment (i, i+1) in the trace order that's closest to (x,y).
+  let bestI = 0, bestDist = Infinity;
+  for (let i = 0; i < tg.members.length - 1; i++) {
+    const a = state.landmarks.find(l => l.name === tg.members[i]);
+    const b = state.landmarks.find(l => l.name === tg.members[i + 1]);
+    if (!a || !b) continue;
+    const d = pointToSegmentDistance(x, y, a.x, a.y, b.x, b.y);
+    if (d < bestDist) { bestDist = d; bestI = i; }
+  }
+  // If the trace has <2 members, just append.
+  if (tg.members.length < 2) bestI = tg.members.length - 1;
+  // Apply edge snap if enabled
+  let px = x, py = y;
+  if (state.snapEnabled && state.edgeReady && state.traceSnapMode !== 'off') {
+    // Build a tiny preview with the segment direction so the path-snap
+    // helper computes the right tangent.
+    const a = state.landmarks.find(l => l.name === tg.members[bestI]);
+    const b = tg.members[bestI + 1] ? state.landmarks.find(l => l.name === tg.members[bestI + 1]) : null;
+    const saved = state.tracePreview;
+    if (a && b) {
+      state.tracePreview = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
+    } else if (a) {
+      state.tracePreview = [{ x: a.x, y: a.y }, { x, y }];
+    } else {
+      state.tracePreview = [{ x, y }];
+    }
+    let result;
+    if (state.traceSnapMode === 'path') {
+      result = snapToNearestEdgeAlongPath(x, y, state.traceSnapWidth);
+    } else {
+      result = snapToNearestEdge(x, y, state.snapRadius);
+    }
+    state.tracePreview = saved;
+    if (result.magnitude > 0) {
+      px = result.x;
+      py = result.y;
+    }
+  }
+  // Allocate next sequence number for this group
+  const seq = (state.traceGroupCounter[groupName] != null)
+    ? state.traceGroupCounter[groupName]
+    : (tg.members.length + 1);
+  state.traceGroupCounter[groupName] = seq + 1;
+  const newName = `${groupName}_${seq}`;
+  const lm = {
+    id: state.nextId++,
+    name: newName,
+    type: 'point',
+    x: px, y: py,
+    color: tg.color,
+    group: groupName,
+  };
+  state.landmarks.push(lm);
+  // Insert in the group's member list at bestI+1
+  tg.members.splice(bestI + 1, 0, newName);
+  setStatus(`Inserted ${newName} into trace "${groupName}".`, 'ok');
+  renderAll();
+}
+
+function pointToSegmentDistance(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function deleteTraceGroup(groupName) {
+  const tg = state.traceGroups[groupName];
+  if (!tg) return;
+  if (!confirm(`Delete trace "${groupName}" (${tg.members.length} points)?`)) return;
+  const nameSet = new Set(tg.members);
+  state.landmarks = state.landmarks.filter(l => !nameSet.has(l.name));
+  delete state.traceGroups[groupName];
+  // Keep traceGroupCounter entry (so re-tracing the same name continues
+  // numbering from where it left off) but ensure nextId stays past any
+  // removed ids.
+  for (const lm of state.landmarks) {
+    if (lm.id >= state.nextId) state.nextId = lm.id + 1;
+  }
+  if (state.selectedId && !state.landmarks.find(l => l.id === state.selectedId)) {
+    state.selectedId = null;
+  }
+  setStatus(`Deleted trace "${groupName}".`, 'ok');
+  renderAll();
 }
 
 function showContextMenu(x, y, id) {
@@ -2728,7 +3083,20 @@ function onKey(e) {
 //    for sharing layouts between users.
 
 function buildExportData() {
-  const groups = state.presets[state.activePreset]?.groups || [];
+  // Merge user-named trace groups into the topology alongside the static
+  // preset groups. Without this, traced walls are dropped from the export
+  // because they live outside the preset's groups array.
+  const presetGroups = state.presets[state.activePreset]?.groups || [];
+  const traceGroupsExport = Object.entries(state.traceGroups || {}).map(([gname, tg]) => ({
+    id: gname,
+    style: tg.style || 'smooth',
+    closed: !!tg.closed,
+    color: tg.color || '#5fb8ff',
+    members: tg.members || [],
+    source: 'trace',                 // provenance hint for downstream consumers
+    renderAs: tg.style === 'free' ? 'dots-only' : (tg.closed ? 'closed-loop' : 'open-path'),
+  }));
+  const groups = [...presetGroups, ...traceGroupsExport];
   const structures = inferStructures(groups);
   const measurements = inferMeasurements(structures);
   const path = inferPathology();
@@ -2755,7 +3123,7 @@ function buildExportData() {
       walls: inferWalls(groups, structures),
     },
 
-    // Topology: how the structures connect
+    // Topology: how the structures connect (preset groups + user-traced groups)
     topology: {
       groups: groups.map(g => ({
         id: g.id || g.name || `group_${Math.random().toString(36).slice(2,8)}`,
@@ -2763,6 +3131,7 @@ function buildExportData() {
         closed: !!g.closed,
         color: g.color,
         members: g.members,
+        source: g.source || 'preset',
         renderAs: g.style === 'free' ? 'dots-only' : (g.closed ? 'closed-loop' : 'open-path'),
       })),
     },
