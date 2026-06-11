@@ -61,6 +61,27 @@
   .legend-row svg { flex-shrink: 0; }
   .legend-row strong { color: #f5f5f5; }
 
+  /* Trace color swatches */
+  .color-row {
+    display: flex; gap: 4px; flex-wrap: wrap; flex: 1;
+  }
+  .color-swatch {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.1s;
+  }
+  .color-swatch:hover {
+    transform: scale(1.15);
+    border-color: white;
+  }
+  .color-swatch.active {
+    border-color: white;
+    box-shadow: 0 0 0 1px black, 0 0 4px rgba(255,255,255,0.5);
+  }
+
   /* Eraser mode active state */
   #btnEraser.active {
     background: #c44; border-color: #c44; color: white;
@@ -418,6 +439,21 @@
             <option value="numbered">Numbered (1, 2, 3…)</option>
           </select>
         </div>
+        <div class="row" style="margin-top:6px; align-items: center;">
+          <label>Trace color</label>
+          <div id="traceColorRow" class="color-row">
+            <button type="button" class="color-swatch" data-color="#2c8aff" style="background:#2c8aff" title="Blue (default)"></button>
+            <button type="button" class="color-swatch" data-color="#5fd178" style="background:#5fd178" title="Green"></button>
+            <button type="button" class="color-swatch" data-color="#ffd45f" style="background:#ffd45f" title="Yellow"></button>
+            <button type="button" class="color-swatch" data-color="#ff7faa" style="background:#ff7faa" title="Pink"></button>
+            <button type="button" class="color-swatch" data-color="#c88aff" style="background:#c88aff" title="Purple"></button>
+            <button type="button" class="color-swatch" data-color="#ff9d5f" style="background:#ff9d5f" title="Orange"></button>
+            <button type="button" class="color-swatch" data-color="#5fffd1" style="background:#5fffd1" title="Teal"></button>
+            <button type="button" class="color-swatch" data-color="#ff5f5f" style="background:#ff5f5f" title="Red"></button>
+            <button type="button" class="color-swatch" data-color="#9dff5f" style="background:#9dff5f" title="Lime"></button>
+            <button type="button" class="color-swatch" data-color="#5f6fff" style="background:#5f6fff" title="Indigo"></button>
+          </div>
+        </div>
         <div class="btn-row" style="margin-top:6px">
           <button id="btnAddPoint" disabled title="Right-click on image to add">Add point…</button>
           <button id="btnClearAll" class="danger" disabled>Clear all</button>
@@ -548,6 +584,7 @@ const state = {
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
+  traceColor: '#2c8aff',   // current trace color (changes per trace via UI)
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -861,6 +898,13 @@ function bindUI() {
     state.traceLabelMode = e.target.value;
     render();
   };
+
+  // Trace color swatches
+  document.querySelectorAll('#traceColorRow .color-swatch').forEach(btn => {
+    btn.onclick = () => setTraceColor(btn.dataset.color);
+  });
+  // Mark the default as active
+  setTraceColor(state.traceColor);
 
   // Export
   $('btnExportJson').onclick = exportJSON;
@@ -1831,6 +1875,8 @@ function setTraceActive(active) {
   $('traceBadge').style.display = active ? 'block' : 'none';
   // Position the trace preview SVG over the image
   sizeTracePreview();
+  // Apply the current trace color to the preview
+  applyTraceColorToPreview();
   if (active) {
     const modeDesc = state.traceSnapMode === 'off' ? 'exact path (no snap)' :
                      state.traceSnapMode === 'path' ? 'path strip snap' : 'radius snap';
@@ -1839,6 +1885,22 @@ function setTraceActive(active) {
     setStatus('Trace mode OFF.', '');
     clearTracePreview();
   }
+}
+
+function applyTraceColorToPreview() {
+  const path = $('tracePreviewPath');
+  const dot = $('tracePreviewDot');
+  if (path) path.setAttribute('stroke', state.traceColor);
+  if (dot) dot.setAttribute('fill', state.traceColor);
+}
+
+function setTraceColor(color) {
+  state.traceColor = color;
+  applyTraceColorToPreview();
+  // Update the swatch UI to show the active color
+  document.querySelectorAll('#traceColorRow .color-swatch').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.color.toLowerCase() === color.toLowerCase());
+  });
 }
 
 function sizeTracePreview() {
@@ -1957,7 +2019,7 @@ function addTracePoint(x, y, isFirst) {
     type: 'point',
     x: px,
     y: py,
-    color: '#2c8aff',
+    color: state.traceColor,
     group: 'trace',
   };
   state.landmarks.push(lm);
