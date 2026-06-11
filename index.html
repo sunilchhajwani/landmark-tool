@@ -488,6 +488,20 @@
           <button id="btnCopySimPrompt" disabled>📋 Copy sim prompt</button>
           <button id="btnDownloadSimPrompt" disabled>Download .md</button>
         </div>
+        <div class="row" style="margin-top:6px">
+          <label>Test sample</label>
+          <select id="sampleTestSel">
+            <option value="">— pick a test case —</option>
+            <option value="chart">Chart (blood glucose)</option>
+            <option value="photo">Photo (portrait)</option>
+            <option value="diagram">Diagram (flow chart)</option>
+            <option value="plan">Floor plan</option>
+            <option value="empty">Empty (no landmarks)</option>
+          </select>
+        </div>
+        <div class="btn-row" style="margin-top:4px">
+          <button id="btnShowSample">Preview sample prompt</button>
+        </div>
         <p class="help" style="margin-top:4px">JSON = full simulator spec for CLI (Gemini/Claude). Sim prompt = ready-to-paste instructions + spec for the CLI to consume. SVG = portable image+landmarks file.</p>
       </div>
 
@@ -915,6 +929,7 @@ function bindUI() {
   $('btnExportSvg').onclick = exportSVG;
   $('btnCopySimPrompt').onclick = copySimPrompt;
   $('btnDownloadSimPrompt').onclick = downloadSimPrompt;
+  $('btnShowSample').onclick = showSamplePrompt;
 
   // Canvas
   $('overlaySvg').addEventListener('contextmenu', onContextMenu);
@@ -3254,6 +3269,154 @@ function inferGenericUseCase(data) {
   return 'general image annotation';
 }
 
+// Generate a sample prompt for a synthetic non-echo case. Used to
+// verify the prompt builder is fully generic without needing real images.
+// Pass a case id: 'chart', 'photo', 'diagram', 'plan', or 'empty'.
+function buildSampleSimPrompt(caseId) {
+  // Save current state
+  const saved = {
+    landmarks: state.landmarks,
+    activePreset: state.activePreset,
+    presets: state.presets,
+    imageName: state.imageName,
+    naturalW: state.naturalW,
+    naturalH: state.naturalH,
+    pxPerCm: state.pxPerCm,
+  };
+
+  // Build synthetic data
+  let sampleLandmarks, samplePresets, sampleImage, sampleW, sampleH, sampleCalib, sampleMeasurements;
+
+  if (caseId === 'chart') {
+    sampleImage = 'blood_glucose_chart.png';
+    sampleW = 800; sampleH = 500;
+    sampleLandmarks = [
+      { id: 1, name: 'peak_breakfast',  group: 'glucose_peaks', color: '#ff7faa', x: 150, y: 150 },
+      { id: 2, name: 'peak_lunch',      group: 'glucose_peaks', color: '#ff7faa', x: 400, y: 120 },
+      { id: 3, name: 'peak_dinner',     group: 'glucose_peaks', color: '#ff7faa', x: 650, y: 160 },
+      { id: 4, name: 'trough_pre_lunch',group: 'glucose_troughs', color: '#5fb8ff', x: 280, y: 280 },
+      { id: 5, name: 'trough_pre_dinner',group: 'glucose_troughs', color: '#5fb8ff', x: 530, y: 290 },
+      { id: 6, name: 'baseline_axis',   group: 'reference', color: '#8a8a92', x: 100, y: 400 },
+      { id: 7, name: 'target_range_low',group: 'reference', color: '#5fd178', x: 100, y: 220 },
+      { id: 8, name: 'target_range_high',group: 'reference', color: '#5fd178', x: 100, y: 180 },
+    ];
+    samplePresets = {
+      '__sample_chart__': {
+        name: 'Sample Chart',
+        groups: [
+          { id: 'glucose_peaks', style: 'free', closed: false, color: '#ff7faa', members: ['peak_breakfast', 'peak_lunch', 'peak_dinner'] },
+          { id: 'glucose_troughs', style: 'free', closed: false, color: '#5fb8ff', members: ['trough_pre_lunch', 'trough_pre_dinner'] },
+          { id: 'reference', style: 'free', closed: false, color: '#8a8a92', members: ['baseline_axis', 'target_range_low', 'target_range_high'] },
+        ],
+        landmarks: sampleLandmarks,
+      }
+    };
+    sampleMeasurements = []; // user didn't define any
+  } else if (caseId === 'photo') {
+    sampleImage = 'portrait.jpg';
+    sampleW = 600; sampleH = 800;
+    sampleLandmarks = [
+      { id: 1, name: 'left_eye_outer',  group: 'eyes', color: '#5fb8ff', x: 200, y: 320 },
+      { id: 2, name: 'left_eye_inner',  group: 'eyes', color: '#5fb8ff', x: 250, y: 320 },
+      { id: 3, name: 'right_eye_inner', group: 'eyes', color: '#5fb8ff', x: 350, y: 320 },
+      { id: 4, name: 'right_eye_outer', group: 'eyes', color: '#5fb8ff', x: 400, y: 320 },
+      { id: 5, name: 'nose_tip',        group: 'nose', color: '#5fd178', x: 300, y: 420 },
+      { id: 6, name: 'mouth_left',      group: 'mouth', color: '#ff7faa', x: 240, y: 520 },
+      { id: 7, name: 'mouth_center',    group: 'mouth', color: '#ff7faa', x: 300, y: 540 },
+      { id: 8, name: 'mouth_right',     group: 'mouth', color: '#ff7faa', x: 360, y: 520 },
+      { id: 9, name: 'chin',            group: 'face', color: '#ffd45f', x: 300, y: 640 },
+    ];
+    samplePresets = {
+      '__sample_photo__': {
+        name: 'Sample Photo',
+        groups: [
+          { id: 'eyes', style: 'straight', closed: false, color: '#5fb8ff', members: ['left_eye_outer', 'left_eye_inner', 'right_eye_inner', 'right_eye_outer'] },
+          { id: 'nose', style: 'free', closed: false, color: '#5fd178', members: ['nose_tip'] },
+          { id: 'mouth', style: 'smooth', closed: false, color: '#ff7faa', members: ['mouth_left', 'mouth_center', 'mouth_right'] },
+          { id: 'face', style: 'free', closed: false, color: '#ffd45f', members: ['chin'] },
+        ],
+        landmarks: sampleLandmarks,
+      }
+    };
+    sampleMeasurements = [];
+  } else if (caseId === 'diagram') {
+    sampleImage = 'flow_chart.png';
+    sampleW = 700; sampleH = 500;
+    sampleLandmarks = [
+      { id: 1, name: 'input_node',  group: 'flow', color: '#5fd178', x: 100, y: 100 },
+      { id: 2, name: 'process_a',   group: 'flow', color: '#5fb8ff', x: 300, y: 100 },
+      { id: 3, name: 'decision',    group: 'flow', color: '#ffd45f', x: 500, y: 100 },
+      { id: 4, name: 'output_pass', group: 'flow', color: '#5fd178', x: 600, y: 50 },
+      { id: 5, name: 'output_fail', group: 'flow', color: '#ff5f5f', x: 600, y: 200 },
+      { id: 6, name: 'process_b',   group: 'flow', color: '#5fb8ff', x: 300, y: 300 },
+      { id: 7, name: 'process_c',   group: 'flow', color: '#5fb8ff', x: 500, y: 300 },
+    ];
+    samplePresets = {
+      '__sample_diagram__': {
+        name: 'Sample Diagram',
+        groups: [
+          { id: 'flow', style: 'straight', closed: false, color: '#5fb8ff', members: ['input_node', 'process_a', 'decision', 'output_pass', 'output_fail', 'process_b', 'process_c'] },
+        ],
+        landmarks: sampleLandmarks,
+      }
+    };
+    sampleMeasurements = [];
+  } else if (caseId === 'plan') {
+    sampleImage = 'floor_plan.png';
+    sampleW = 1000; sampleH = 700;
+    sampleLandmarks = [
+      { id: 1, name: 'living_room',  group: 'rooms', color: '#5fd178', x: 250, y: 250 },
+      { id: 2, name: 'kitchen',      group: 'rooms', color: '#5fd178', x: 500, y: 250 },
+      { id: 3, name: 'bedroom',      group: 'rooms', color: '#5fd178', x: 750, y: 250 },
+      { id: 4, name: 'bathroom',     group: 'rooms', color: '#5fd178', x: 750, y: 500 },
+      { id: 5, name: 'door_main',    group: 'doors', color: '#5fb8ff', x: 100, y: 250 },
+      { id: 6, name: 'door_bedroom', group: 'doors', color: '#5fb8ff', x: 625, y: 250 },
+      { id: 7, name: 'window_north', group: 'windows', color: '#ffd45f', x: 250, y: 100 },
+      { id: 8, name: 'window_east',  group: 'windows', color: '#ffd45f', x: 900, y: 250 },
+    ];
+    samplePresets = {
+      '__sample_plan__': {
+        name: 'Sample Floor Plan',
+        groups: [
+          { id: 'rooms', style: 'free', closed: false, color: '#5fd178', members: ['living_room', 'kitchen', 'bedroom', 'bathroom'] },
+          { id: 'doors', style: 'straight', closed: false, color: '#5fb8ff', members: ['door_main', 'door_bedroom'] },
+          { id: 'windows', style: 'free', closed: false, color: '#ffd45f', members: ['window_north', 'window_east'] },
+        ],
+        landmarks: sampleLandmarks,
+      }
+    };
+    sampleMeasurements = [];
+  } else if (caseId === 'empty') {
+    sampleImage = null;
+    sampleW = 0; sampleH = 0;
+    sampleLandmarks = [];
+    samplePresets = {};
+    sampleMeasurements = [];
+  }
+
+  // Temporarily swap state
+  state.landmarks = sampleLandmarks;
+  state.activePreset = samplePresets ? Object.keys(samplePresets)[0] : null;
+  state.presets = samplePresets || {};
+  state.imageName = sampleImage;
+  state.naturalW = sampleW;
+  state.naturalH = sampleH;
+  state.pxPerCm = null;
+
+  const prompt = buildSimPrompt();
+
+  // Restore state
+  state.landmarks = saved.landmarks;
+  state.activePreset = saved.activePreset;
+  state.presets = saved.presets;
+  state.imageName = saved.imageName;
+  state.naturalW = saved.naturalW;
+  state.naturalH = saved.naturalH;
+  state.pxPerCm = saved.pxPerCm;
+
+  return prompt;
+}
+
 function copySimPrompt() {
   const prompt = buildSimPrompt();
   if (navigator.clipboard) {
@@ -3277,6 +3440,81 @@ function downloadSimPrompt() {
   const fname = `${state.imageName || 'landmarks'}.sim-prompt.md`;
   download(prompt, fname, 'text/markdown');
   setStatus(`Downloaded simulator prompt to ${fname}.`, 'ok');
+}
+
+function showSamplePrompt() {
+  const caseId = $('sampleTestSel').value;
+  if (!caseId) {
+    setStatus('Pick a test case from the dropdown first.', 'warn');
+    return;
+  }
+  const prompt = buildSampleSimPrompt(caseId);
+  // Show in a modal-like overlay
+  const modal = document.createElement('div');
+  modal.id = 'sampleModal';
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  `;
+  modal.innerHTML = `
+    <div style="background: #0a0a12; border: 1px solid #2a2a30; border-radius: 6px;
+                width: 90%; max-width: 1100px; max-height: 90vh;
+                display: flex; flex-direction: column;">
+      <div style="padding: 12px 16px; border-bottom: 1px solid #2a2a30;
+                  display: flex; justify-content: space-between; align-items: center;">
+        <div style="color: #f5f5f5; font-weight: 600;">Sample prompt: ${caseId}</div>
+        <button id="closeSampleModal" style="background: #c44; color: white; border: none;
+                  padding: 6px 12px; border-radius: 4px; cursor: pointer;">Close</button>
+      </div>
+      <pre id="sampleModalContent" style="margin: 0; padding: 16px; overflow: auto;
+                  color: #c8c8ce; font-family: ui-monospace, monospace; font-size: 11px;
+                  line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;
+                  flex: 1; min-height: 0;">${escapeHtml(prompt)}</pre>
+      <div style="padding: 12px 16px; border-top: 1px solid #2a2a30;
+                  display: flex; gap: 8px;">
+        <button id="copySampleModal" style="background: #2c5cff; color: white; border: none;
+                  padding: 6px 12px; border-radius: 4px; cursor: pointer;">Copy to clipboard</button>
+        <button id="downloadSampleModal" style="background: #5fd178; color: black; border: none;
+                  padding: 6px 12px; border-radius: 4px; cursor: pointer;">Download .md</button>
+        <div style="color: #8a8a92; font-size: 11px; align-self: center; margin-left: 12px;">
+          This is a synthetic sample — actual content is your real spec.
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.getElementById('closeSampleModal').onclick = () => modal.remove();
+  document.getElementById('copySampleModal').onclick = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(prompt).then(
+        () => setStatus('Sample prompt copied to clipboard.', 'ok'),
+        () => setStatus('Clipboard not available — use Download instead.', 'warn')
+      );
+    }
+  };
+  document.getElementById('downloadSampleModal').onclick = () => {
+    download(prompt, `sample-${caseId}-prompt.md`, 'text/markdown');
+    setStatus(`Downloaded sample-${caseId}-prompt.md`, 'ok');
+  };
+  // Close on Escape
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      modal.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function exportSVG() {
