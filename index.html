@@ -53,6 +53,33 @@
   .toggle-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #c8c8ce; margin-bottom: 4px; cursor: pointer; }
   .toggle-row input { margin: 0; }
 
+  /* Toggle switch (iOS-style sliding button) — used for the more prominent
+     trace auto-resume toggle, where the user expects an obvious on/off
+     visual rather than a small checkbox. Wraps the native checkbox in a
+     styled label+span, keeps the underlying input functional for
+     accessibility and the existing onchange handler. */
+  .switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: #2a2a30; border: 1px solid #3a3a40; border-radius: 20px;
+    transition: 0.15s;
+  }
+  .switch .slider::before {
+    position: absolute; content: "";
+    height: 14px; width: 14px;
+    left: 2px; top: 2px;
+    background: #c8c8ce; border-radius: 50%;
+    transition: 0.15s;
+  }
+  .switch input:checked + .slider { background: #2c5cff; border-color: #2c5cff; }
+  .switch input:checked + .slider::before { transform: translateX(16px); background: #ffffff; }
+  .switch input:focus + .slider { box-shadow: 0 0 0 2px rgba(44, 92, 255, 0.35); }
+  .switch-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 12px; color: #c8c8ce; cursor: pointer; }
+  .switch-row .label-text { flex: 1; line-height: 1.3; }
+  .switch-row .label-text strong { color: #f5f5f5; }
+  .switch-row .label-text small { color: #5a5a62; font-size: 10px; display: block; margin-top: 2px; }
+
   /* Legend row in Connection Style section */
   .legend-row {
     display: flex; align-items: center; gap: 8px;
@@ -412,6 +439,13 @@
         <input type="file" id="fileJson" accept=".json,application/json" style="display:none">
       </div>
 
+      <div class="section">
+        <label class="switch-row" title="When ON, releasing and re-mousing-down continues the trace from the last placed point (joined at that point, no duplicate). When OFF, each stroke is a separate trace batch that starts at your click. Press R to toggle.">
+          <span class="label-text"><strong>Auto-resume trace</strong><small>Continue from last point across pen-lifts · R</small></span>
+          <span class="switch"><input type="checkbox" id="traceResumeCb"><span class="slider"></span></span>
+        </label>
+      </div>
+
       <div class="section" style="border: 2px solid #5f4cff; background: #15102a; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px;">
         <h2 style="color: #9d8aff;">Animation Sequence / Frames</h2>
         <div class="row">
@@ -556,7 +590,7 @@
           <button id="btnNode" disabled title="NODE tool: select anchors to edit Bezier handles independently. Shift-click handle to cycle type (auto/smooth/symmetric/cusp). Click curve to insert. Right-click anchor to delete. Esc to exit.">⬠ Node</button>
           <button id="btnUndoErase" class="danger" disabled title="No pending eraser sweep or trace batch to undo">↶ Undo</button>
         </div>
-        <div class="row" style="margin-top:6px">
+        <div class="row">
           <label>Eraser</label>
           <select id="eraserSizeSel">
             <option value="10">10 px (small)</option>
@@ -574,7 +608,6 @@
             <option value="80">80 px (very sparse)</option>
           </select>
         </div>
-        <label class="toggle-row" style="margin-top:6px" title="When ON, releasing and re-mousing-down continues the trace from the last placed point (joined at that point, no duplicate). When OFF, each stroke is a separate trace batch that starts at your click."><input type="checkbox" id="traceResumeCb"> Auto-resume trace from last point <span style="color:#5a5a62;font-size:10px">(R)</span></label>
         <div class="row" style="margin-top:6px">
           <label>Snap mode</label>
           <select id="traceSnapModeSel">
@@ -860,6 +893,14 @@ const state = {
   traceResumeFrom: null,   // {x, y, name} last placed point from the previous stroke
   traceResuming: false,    // true during the very first mousemove after a resume
   traceResumeEnabled: false, // user opt-in: ON = next mousedown continues from traceResumeFrom, OFF = starts a new batch
+  traceStrokeCounter: 0,  // monotonically increasing; each new stroke (every release) gets the next id
+  traceStrokeId: 1,       // current stroke's group id; tagged onto every trace point placed in this stroke
+                           // so the curve renderer can group them as a single polyline. The renderer
+                           // groups by (color, strokeId) — so two strokes at the same color form two
+                           // separate curves unless the toggle was ON at the boundary, in which case
+                           // they're a single curve. (With ON, the second stroke continues the first
+                           // by sharing a landmark at the join, so the boundary is invisible in the
+                           // group split too.)
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
@@ -1805,7 +1846,13 @@ function computeConnections(presetName, landmarksArray) {
     }
   }
 
-  // 2. Automatically connect trace points (group === 'trace' or name starting with 'trace_')
+  // 2. Automatically connect trace points (group === 'trace' or name starting with 'trace_').
+  //    Group by (color, strokeId) so each pen-down → pen-up stroke renders as its
+  //    own polyline. The user breaks the curve simply by lifting the pen (toggle
+  //    OFF, default) — the new stroke gets a fresh strokeId and a fresh polyline.
+  //    With auto-resume ON, the new stroke joins at the previous stroke's end
+  //    point (shared landmark, no strokeId change visible at the join) and the
+  //    two strokes still appear as one continuous curve.
   const tracePoints = lms.filter(lm => lm.group === 'trace' || (lm.name && lm.name.startsWith('trace_')));
   if (tracePoints.length >= 2) {
     // Sort by name suffix digit sequence (e.g. trace_001, trace_002) to ensure chronological sequence
@@ -1815,22 +1862,28 @@ function computeConnections(presetName, landmarksArray) {
       return numA - numB;
     });
 
-    // Group trace points by color swatch (separate curves are drawn per color)
+    // Group trace points by (color, strokeId) — each pen-down → pen-up
+    // segment is its own polyline. Old data (no strokeId) falls back to
+    // grouping by color only, preserving the pre-strokeId behavior.
     const traceGroups = {};
     tracePoints.forEach(lm => {
       const col = lm.color || '#2c8aff';
-      if (!traceGroups[col]) traceGroups[col] = [];
-      traceGroups[col].push(lm);
+      // If strokeId is missing (legacy data or non-trace point), treat
+      // it as 0 so all such points coalesce into one group at this color.
+      const sid = (typeof lm.strokeId === 'number') ? lm.strokeId : 0;
+      const key = col + '|' + sid;
+      if (!traceGroups[key]) traceGroups[key] = { color: col, strokeId: sid, points: [] };
+      traceGroups[key].points.push(lm);
     });
 
-    for (const col of Object.keys(traceGroups)) {
-      const pts = traceGroups[col];
-      if (pts.length >= 2) {
+    for (const key of Object.keys(traceGroups)) {
+      const g = traceGroups[key];
+      if (g.points.length >= 2) {
         out.push({
           style: 'smooth',
           closed: false,
-          color: col,
-          points: pts.map(lm => ({
+          color: g.color,
+          points: g.points.map(lm => ({
             x: lm.x,
             y: lm.y,
             name: lm.name,
@@ -3219,6 +3272,26 @@ function beginTrace(x, y) {
   // the right baseline for the interval check.
   if (state.traceResumeFrom && state.traceResumeEnabled) {
     const r = state.traceResumeFrom;
+
+    // When auto-resume is enabled, we continue the PREVIOUS stroke group so
+    // all new points share the same strokeId and the curve renderer draws
+    // them as one continuous polyline with the previous stroke.
+    //
+    // IMPORTANT: do NOT call addTracePoint() for the resume coordinate.
+    // The previous stroke's last landmark already exists at (r.x, r.y) with
+    // the correct strokeId. Creating a second landmark there produces a
+    // duplicate point that the curve renderer sees as a tiny loop/bump, and
+    // it would be included in state.tracePoints / traceLastBatch — so an
+    // undo would delete the join point and visually break the previous stroke.
+    //
+    // Instead we just:
+    //   1. Restore traceStrokeId to the previous stroke's value so every
+    //      new addTracePoint() call in this stroke is grouped with it.
+    //   2. Set traceLastPoint to the resume coordinates so continueTrace()
+    //      measures interval distance from the correct baseline.
+    //   3. Seed tracePreview with the resume point so the live preview line
+    //      draws a bridge from the end of the previous stroke to the cursor.
+    state.traceStrokeId = (typeof r.strokeId === 'number') ? r.strokeId : (state.traceStrokeId - 1);
     state.tracePreview.push({ x: r.x, y: r.y });
     state.tracePreview.push({ x, y });
     state.traceLastPoint = { x: r.x, y: r.y };
@@ -3268,7 +3341,19 @@ function endTrace() {
   // position should follow the moved point, not stay frozen at the original
   // placement).
   const lastPlaced = state.traceLastBatch[state.traceLastBatch.length - 1];
-  state.traceResumeFrom = { x: lastPlaced.x, y: lastPlaced.y, name: lastPlaced.name };
+  // Also store the strokeId so beginTrace can continue this group without
+  // creating a new strokeId (which would split the curve at the pen-lift).
+  state.traceResumeFrom = { x: lastPlaced.x, y: lastPlaced.y, name: lastPlaced.name, strokeId: lastPlaced.strokeId };
+  // Bump the stroke id so the NEXT pen-down starts a fresh stroke group
+  // in the curve renderer. If the user has resume ON, beginTrace will
+  // join at traceResumeFrom, so the two strokes still share the join
+  // landmark and render as a single continuous polyline (the strokeId
+  // bump is invisible in that case because there's only one visual
+  // curve). If the user has resume OFF, the next stroke's points have
+  // a different strokeId and the renderer draws them as a separate
+  // polyline, breaking the curve at the pen-lift.
+  state.traceStrokeCounter++;
+  state.traceStrokeId = state.traceStrokeCounter + 1;
   // Mention the resume option only when the toggle is on; otherwise the
   // next mousedown will start a new batch, not a continuation.
   const resumeNote = state.traceResumeEnabled
@@ -3337,6 +3422,12 @@ function addTracePoint(x, y, isFirst) {
     y: py,
     color: state.traceColor,
     group: 'trace',
+    // strokeId groups trace points by the stroke they were placed in, so
+    // the curve renderer can draw each pen-down → pen-up segment as a
+    // separate polyline. Without this, every trace point is one big
+    // single-color group and the user can't visually break the curve
+    // simply by lifting the pen.
+    strokeId: state.traceStrokeId,
     // MED-severity fix: initialize Bezier handle fields so node-mode editing
     // of trace points works on the first interaction (mirrors insertNodePoint).
     // Without this, getNodeHandle backfills {x:0,y:0} on first read — fine for
@@ -4267,6 +4358,11 @@ function buildExportData() {
       type: l.type || 'point',
       color: l.color,
       group: l.group || null,
+      // strokeId groups trace points by the pen-stroke they were placed
+      // in. Downstream tools (simulator, etc.) can use this to render
+      // each stroke as a separate curve. Legacy data without strokeId
+      // exports as null.
+      strokeId: (typeof l.strokeId === 'number') ? l.strokeId : null,
       x_A: +l.x.toFixed(2),
       y_A: +l.y.toFixed(2),
       x_B: +matchB.x.toFixed(2),
@@ -4295,6 +4391,11 @@ function buildExportData() {
         type: l.type || 'point',
         color: l.color,
         group: l.group || null,
+        // strokeId groups trace points by the pen-stroke they were placed
+        // in. Downstream tools (simulator, etc.) can use this to render
+        // each stroke as a separate curve. Legacy data without strokeId
+        // exports as null.
+        strokeId: (typeof l.strokeId === 'number') ? l.strokeId : null,
         x: +l.x.toFixed(2),
         y: +l.y.toFixed(2),
         handleIn: l.handleIn || { x: 0, y: 0 },
