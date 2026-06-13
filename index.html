@@ -99,14 +99,27 @@
     cursor: pointer;
     padding: 0;
     transition: transform 0.1s;
+    position: relative;
   }
   .color-swatch:hover {
     transform: scale(1.15);
     border-color: white;
   }
   .color-swatch.active {
-    border-color: white;
-    box-shadow: 0 0 0 1px black, 0 0 4px rgba(255,255,255,0.5);
+    border: 2px solid #18181b; /* matching sidebar bg color for a clean border gap */
+    outline: 2px solid #2c5cff; /* primary blue outline */
+    box-shadow: 0 0 4px rgba(44, 92, 255, 0.6);
+  }
+  .color-swatch.active::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: white;
+    mix-blend-mode: difference;
+    pointer-events: none;
   }
 
   /* Eraser mode active state */
