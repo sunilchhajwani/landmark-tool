@@ -3146,17 +3146,20 @@ function beginTrace(x, y) {
   state.traceLastPoint = null;
 
   // Resume from the previous stroke's last point if available. The new
-  // stroke's first placed point is at the resume location (not at the
-  // user's click), so the curve visually picks up exactly where they left
-  // off. The click position (x, y) is still added to the preview so the
-  // live polyline shows the user's stroke away from the resume point.
+  // stroke's first NEW point gets the next sequential name (e.g. trace_006
+  // after a stroke ending at trace_005), and the curve joins at trace_005
+  // exactly — no duplicate landmark is created at the join. The user's
+  // click position (x, y) is added to the preview so the live polyline
+  // shows the bridge from the resume point to the click; traceLastPoint
+  // is set to the resume location so the first continueTrace call uses
+  // the right baseline for the interval check.
   if (state.traceResumeFrom) {
     const r = state.traceResumeFrom;
     state.tracePreview.push({ x: r.x, y: r.y });
     state.tracePreview.push({ x, y });
-    addTracePoint(r.x, r.y, true);  // first point of new stroke = resume pt
+    state.traceLastPoint = { x: r.x, y: r.y };
     state.traceResuming = true;
-    state.traceResumeFrom = null;   // consume the resume, regardless of whether the stroke adds more points
+    state.traceResumeFrom = null;   // consume the resume
   } else {
     state.tracePreview.push({ x, y });
     addTracePoint(x, y, true);
