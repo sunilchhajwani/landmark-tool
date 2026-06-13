@@ -395,6 +395,19 @@
         <div class="btn-row" style="margin-top:6px">
           <button id="btnLoadJson">Load JSON…</button>
         </div>
+        <div class="row" style="margin-top:8px">
+          <label>Canvas bg</label>
+          <div id="blankBgRow" class="color-row" style="flex:1">
+            <button type="button" class="color-swatch" data-bg="#ffffff" style="background:#ffffff" title="White"></button>
+            <button type="button" class="color-swatch" data-bg="#e6e6e6" style="background:#e6e6e6" title="Light gray"></button>
+            <button type="button" class="color-swatch" data-bg="#9a9a9a" style="background:#9a9a9a" title="Mid gray"></button>
+            <button type="button" class="color-swatch" data-bg="#4a4a52" style="background:#4a4a52" title="Dark gray"></button>
+            <button type="button" class="color-swatch" data-bg="#1a1a1f" style="background:#1a1a1f" title="Near-black (default)"></button>
+            <button type="button" class="color-swatch" data-bg="#0e1a2a" style="background:#0e1a2a" title="Medical navy"></button>
+            <button type="button" class="color-swatch" data-bg="#0a2a1a" style="background:#0a2a1a" title="US teal"></button>
+            <button type="button" class="color-swatch" data-bg="#fff8e0" style="background:#fff8e0" title="Paper"></button>
+          </div>
+        </div>
         <input type="file" id="fileImg" accept="image/*" style="display:none">
         <input type="file" id="fileJson" accept=".json,application/json" style="display:none">
       </div>
@@ -849,6 +862,7 @@ const state = {
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
   traceColor: '#2c8aff',   // current trace color (changes per trace via UI)
+  blankBgColor: '#1a1a1f', // background color for newly-created blank canvases (set via sidebar swatches)
   curveMode: false,        // true when simple curve edit mode is on
   curveDragId: null,       // id of landmark currently being dragged in curve mode
   nodeMode: false,         // true when Node tool (Inkscape-style) is active
@@ -1055,6 +1069,15 @@ function bindUI() {
   $('btnLoadPresetFile').onclick = () => $('filePreset').click();
   $('filePreset').onchange = (e) => loadPresetFile(e.target.files[0]);
   $('btnBlankCanvas').onclick = () => promptAndLoadBlankCanvas();
+  // Blank canvas bg color: clicking a swatch sets state.blankBgColor and
+  // highlights the active swatch. The actual canvas bg is read from state
+  // at the time the user clicks 'Blank canvas…'.
+  document.querySelectorAll('#blankBgRow .color-swatch').forEach(btn => {
+    btn.onclick = () => {
+      state.blankBgColor = btn.dataset.bg;
+      updateBlankBgSwatches();
+    };
+  });
 
   // Preset
   $('presetSelect').onchange = (e) => {
@@ -1245,6 +1268,8 @@ function bindUI() {
 
   // Initialize Undo button label/title for the empty state.
   updateUndoButton();
+  // Initialize blank-canvas bg swatch active-state to match the default.
+  updateBlankBgSwatches();
 }
 
 function setMode(m) {
@@ -1363,9 +1388,10 @@ function loadBlankCanvas(w, h, bgColor) {
   img.src = dataUrl;
 }
 
-// Prompt the user for blank-canvas dimensions and background color, then
-// load it. Uses sequential prompts (matching the file's existing prompt
-// style) to keep the UI minimal.
+// Prompt the user for blank-canvas dimensions; the background color comes
+// from state.blankBgColor (chosen via the sidebar 'Canvas bg' swatches).
+// This drops the second prompt and keeps the UX consistent with the rest
+// of the tool's color-by-swatch pattern.
 function promptAndLoadBlankCanvas() {
   const size = prompt('Blank canvas size in pixels. Enter as WxH (e.g. 1024x768) or one number for a square:', '1024x768');
   if (size === null) return;
@@ -1382,9 +1408,16 @@ function promptAndLoadBlankCanvas() {
     setStatus('Invalid size. Use WxH format, e.g. 1024x768.', 'err');
     return;
   }
-  const bg = prompt('Background color (hex, e.g. #1a1a1f). Leave blank for dark default.', '#1a1a1f');
-  if (bg === null) return; // user cancelled color
-  loadBlankCanvas(w, h, bg.trim());
+  loadBlankCanvas(w, h, state.blankBgColor);
+}
+
+// Apply active-state visual to the swatch matching the current bg color.
+// Called at app init and whenever the user picks a new color.
+function updateBlankBgSwatches() {
+  document.querySelectorAll('#blankBgRow .color-swatch').forEach(btn => {
+    btn.classList.toggle('active',
+      (btn.dataset.bg || '').toLowerCase() === (state.blankBgColor || '').toLowerCase());
+  });
 }
 
 function refreshFramesUI() {
