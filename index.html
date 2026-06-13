@@ -390,6 +390,9 @@
         <h2>Image</h2>
         <div class="btn-row">
           <button id="btnLoadImg">Load image…</button>
+          <button id="btnBlankCanvas">Blank canvas…</button>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
           <button id="btnLoadJson">Load JSON…</button>
         </div>
         <input type="file" id="fileImg" accept="image/*" style="display:none">
@@ -656,7 +659,7 @@
   </aside>
 
   <main id="stage-wrap">
-    <div id="dropzone">Drop an image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" in the sidebar</span></div>
+    <div id="dropzone">Drop an image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" / "Blank canvas…" in the sidebar</span></div>
     <div id="stage">
       <img id="bgImg" alt="">
       <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -1043,6 +1046,7 @@ function bindUI() {
   $('fileJson').onchange = (e) => loadJsonFile(e.target.files[0]);
   $('btnLoadPresetFile').onclick = () => $('filePreset').click();
   $('filePreset').onchange = (e) => loadPresetFile(e.target.files[0]);
+  $('btnBlankCanvas').onclick = () => promptAndLoadBlankCanvas();
 
   // Preset
   $('presetSelect').onchange = (e) => {
@@ -1247,68 +1251,130 @@ function setMode(m) {
 // =====================================================================
 // IMAGE LOADING
 // =====================================================================
+
+// Common setup applied to the active image, whether it came from a file
+// upload or a synthetic blank canvas. Sizing the SVG/stage, enabling the
+// trace/node/curve/eraser tools, hiding the dropzone, resetting the edge
+// map, etc. opts.canComputeEdges=false skips the background edge-map
+// computation (used for blank canvases where there are no features to find).
+function setActiveImage(img, name, dataUrl, opts) {
+  opts = opts || {};
+  const canComputeEdges = opts.canComputeEdges !== false;
+
+  state.image = img;
+  state.imageName = name;
+  state.imageDataUrl = dataUrl;
+  state.naturalW = img.naturalWidth;
+  state.naturalH = img.naturalHeight;
+
+  refreshFramesUI();
+
+  $('bgImg').src = dataUrl;
+  $('bgImg').width = state.naturalW;
+  $('bgImg').height = state.naturalH;
+  $('overlaySvg').setAttribute('width', state.naturalW);
+  $('overlaySvg').setAttribute('height', state.naturalH);
+  $('stage').style.width = state.naturalW + 'px';
+  $('stage').style.height = state.naturalH + 'px';
+  fitToViewport();
+  $('dropzone').style.display = 'none';
+  $('btnAddPoint').disabled = false;
+  $('btnExportJson').disabled = false;
+  $('btnExportSvg').disabled = false;
+  $('btnComputeEdges').disabled = false;
+  $('btnSnapAll').disabled = false;
+  $('btnEraser').disabled = false;
+  $('btnTrace').disabled = false;
+  $('btnCurve').disabled = false;
+  $('btnNode').disabled = false;
+  // Reset edge map for new image
+  state.edgeMap = null;
+  state.edgeW = state.edgeH = 0;
+  state.edgeReady = false;
+  hideEdgeOverlay();
+  setEdgeStatus('idle', 'Edge map: not computed');
+  // Exit eraser/trace if active
+  if (state.eraserActive) setEraserActive(false);
+  if (state.traceActive) setTraceActive(false);
+  state.eraserLastSweep = null;
+  state.traceLastBatch = null;
+  state.traceBatchCounter = 0;
+  updateUndoButton();
+  setStatus(`${name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
+  renderAll();
+  showWelcomeTip();
+  if (canComputeEdges) {
+    // Auto-compute edges in background for faster first snap
+    computeEdgeMap();
+  }
+}
+
 function loadImageFile(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
-    img.onload = () => {
-      state.image = img;
-      state.imageName = file.name;
-      state.imageDataUrl = e.target.result;
-      state.naturalW = img.naturalWidth;
-      state.naturalH = img.naturalHeight;
-      
-      state.image = img;
-      state.imageName = file.name;
-      state.imageDataUrl = e.target.result;
-      state.naturalW = img.naturalWidth;
-      state.naturalH = img.naturalHeight;
-
-      refreshFramesUI();
-
-      $('bgImg').src = e.target.result;
-      $('bgImg').width = state.naturalW;
-      $('bgImg').height = state.naturalH;
-      $('overlaySvg').setAttribute('width', state.naturalW);
-      $('overlaySvg').setAttribute('height', state.naturalH);
-      $('stage').style.width = state.naturalW + 'px';
-      $('stage').style.height = state.naturalH + 'px';
-      // Fit to viewport
-      fitToViewport();
-      $('dropzone').style.display = 'none';
-      $('btnAddPoint').disabled = false;
-      $('btnExportJson').disabled = false;
-      $('btnExportSvg').disabled = false;
-      $('btnComputeEdges').disabled = false;
-      $('btnSnapAll').disabled = false;
-      $('btnEraser').disabled = false;
-      $('btnTrace').disabled = false;
-      $('btnCurve').disabled = false;
-      $('btnNode').disabled = false;
-      // Reset edge map for new image
-      state.edgeMap = null;
-      state.edgeW = state.edgeH = 0;
-      state.edgeReady = false;
-      hideEdgeOverlay();
-      setEdgeStatus('idle', 'Edge map: not computed');
-      // Exit eraser mode if active
-      if (state.eraserActive) setEraserActive(false);
-      // Exit trace mode if active
-      if (state.traceActive) setTraceActive(false);
-      state.eraserLastSweep = null;
-      state.traceLastBatch = null;
-      state.traceBatchCounter = 0;
-      updateUndoButton();
-      setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
-      renderAll();
-      showWelcomeTip();
-      // Auto-compute edges in background for faster first snap
-      computeEdgeMap();
-    };
+    img.onload = () => setActiveImage(img, file.name, e.target.result);
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+// Create a synthetic blank canvas of the given dimensions painted with the
+// given background color, and load it as the active image. This lets the
+// user sketch / trace / draw on a blank surface without needing to provide
+// a real image first. All existing tools (Trace, Node, Curve, Eraser) work
+// the same way as on a real image; the difference is that edge-snap has no
+// edges to find, so we skip the background edge-map compute.
+function loadBlankCanvas(w, h, bgColor) {
+  // Sanitize dimensions
+  w = Math.max(50, Math.min(8000, Math.round(w) || 1024));
+  h = Math.max(50, Math.min(8000, Math.round(h) || 768));
+  // Default to a slightly-lighter-than-wrap dark so the canvas is visible
+  // against the surrounding UI. The user can pass any CSS color.
+  const bg = (bgColor && /^#?[0-9a-fA-F]{3,8}$/.test(bgColor)) ? bgColor : '#1a1a1f';
+  const bgFinal = bg.startsWith('#') ? bg : '#' + bg;
+
+  // Paint the blank canvas off-DOM
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = bgFinal;
+  ctx.fillRect(0, 0, w, h);
+  // Add a 1px border so the user can see the canvas extent at low contrast
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+
+  const dataUrl = canvas.toDataURL('image/png');
+  const img = new Image();
+  img.onload = () => setActiveImage(img, `blank_${w}x${h}`, dataUrl, { canComputeEdges: false });
+  img.src = dataUrl;
+}
+
+// Prompt the user for blank-canvas dimensions and background color, then
+// load it. Uses sequential prompts (matching the file's existing prompt
+// style) to keep the UI minimal.
+function promptAndLoadBlankCanvas() {
+  const size = prompt('Blank canvas size in pixels. Enter as WxH (e.g. 1024x768) or one number for a square:', '1024x768');
+  if (size === null) return;
+  let w, h;
+  const m = size.trim().match(/^(\d+)\s*[xX,\s]\s*(\d+)$/);
+  if (m) {
+    w = parseInt(m[1], 10);
+    h = parseInt(m[2], 10);
+  } else {
+    const n = parseInt(size.trim(), 10);
+    if (!isNaN(n)) { w = n; h = n; }
+  }
+  if (!w || !h) {
+    setStatus('Invalid size. Use WxH format, e.g. 1024x768.', 'err');
+    return;
+  }
+  const bg = prompt('Background color (hex, e.g. #1a1a1f). Leave blank for dark default.', '#1a1a1f');
+  if (bg === null) return; // user cancelled color
+  loadBlankCanvas(w, h, bg.trim());
 }
 
 function refreshFramesUI() {
@@ -1385,7 +1451,7 @@ function loadFrame(idx) {
     $('stage').style.width = '';
     $('stage').style.height = '';
     $('dropzone').style.display = 'flex';
-    $('dropzone').innerHTML = `Drop Frame ${idx + 1} image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" in the sidebar</span>`;
+    $('dropzone').innerHTML = `Drop Frame ${idx + 1} image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" / "Blank canvas…" in the sidebar</span>`;
     hideEdgeOverlay();
     setEdgeStatus('idle', 'Edge map: not computed');
   }
