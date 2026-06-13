@@ -837,6 +837,14 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
+  // Resume support: when the user releases the mouse mid-trace, we keep the
+  // last placed point's position so the next mousedown can continue from
+  // there. The new stroke still gets its own undo batch (so undo is per-
+  // stroke), but the curve visually picks up smoothly from where they left
+  // off. traceResumeFrom = landmark (object) or null. traceResuming is a
+  // brief flag the beginTrace path uses to show a "Resumed from X" status.
+  traceResumeFrom: null,   // {x, y, name} last placed point from the previous stroke
+  traceResuming: false,    // true during the very first mousemove after a resume
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
@@ -1163,6 +1171,7 @@ function bindUI() {
       state.landmarks = []; state.selectedId = null;
       state.eraserLastSweep = null; state.traceLastBatch = null;
       state.traceBatchCounter = 0;
+      state.traceResumeFrom = null; state.traceResuming = false;
       updateUndoButton();
       renderAll();
     }
@@ -1299,6 +1308,7 @@ function setActiveImage(img, name, dataUrl, opts) {
   state.eraserLastSweep = null;
   state.traceLastBatch = null;
   state.traceBatchCounter = 0;
+  state.traceResumeFrom = null; state.traceResuming = false;
   updateUndoButton();
   setStatus(`${name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
   renderAll();
@@ -2633,10 +2643,20 @@ function setTraceActive(active) {
   if (active) {
     const modeDesc = state.traceSnapMode === 'off' ? 'exact path (no snap)' :
                      state.traceSnapMode === 'path' ? 'path strip snap' : 'radius snap';
-    setStatus(`Trace mode ON (${modeDesc}) — click and drag to drop points along a structure.`, 'warn');
+    // If we have a resume point from a previous stroke, mention it so the
+    // user knows that mousing down will pick up from there, not start fresh.
+    const resumeNote = state.traceResumeFrom
+      ? ` Click and drag to continue from ${state.traceResumeFrom.name}.`
+      : '';
+    setStatus(`Trace mode ON (${modeDesc}) — click and drag to drop points along a structure.${resumeNote}`, 'warn');
   } else {
     setStatus('Trace mode OFF.', '');
     clearTracePreview();
+    // Exiting trace mode (Esc, switching to node/curve mode, loading a new
+    // image, etc.) drops the resume context — re-entering trace mode later
+    // starts a fresh batch, not a continuation.
+    state.traceResumeFrom = null;
+    state.traceResuming = false;
   }
 }
 
@@ -3121,11 +3141,26 @@ function clearTracePreview() {
 
 function beginTrace(x, y) {
   // Called on mousedown. Set up state for a new trace.
-  state.tracePreview = [{ x, y }];
+  state.tracePreview = [];
   state.tracePoints = [];
   state.traceLastPoint = null;
-  // Place the first point immediately
-  addTracePoint(x, y, true);
+
+  // Resume from the previous stroke's last point if available. The new
+  // stroke's first placed point is at the resume location (not at the
+  // user's click), so the curve visually picks up exactly where they left
+  // off. The click position (x, y) is still added to the preview so the
+  // live polyline shows the user's stroke away from the resume point.
+  if (state.traceResumeFrom) {
+    const r = state.traceResumeFrom;
+    state.tracePreview.push({ x: r.x, y: r.y });
+    state.tracePreview.push({ x, y });
+    addTracePoint(r.x, r.y, true);  // first point of new stroke = resume pt
+    state.traceResuming = true;
+    state.traceResumeFrom = null;   // consume the resume, regardless of whether the stroke adds more points
+  } else {
+    state.tracePreview.push({ x, y });
+    addTracePoint(x, y, true);
+  }
   // Update preview
   updateTracePreview();
 }
@@ -3158,10 +3193,20 @@ function endTrace() {
   // independent undo states. The Undo button checks both.
   updateUndoButton();
   const count = state.tracePoints.length;
-  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all.`, 'warn');
+  // Remember the last placed point of this stroke so the next mousedown
+  // can resume from there. We store the LANDMARK (not just {x, y}) so the
+  // UI can show "Resumed from trace_007" and so the gap-to-resume distance
+  // is computed in image coords. We keep a SHALLOW {x, y, name} so this
+  // still works if the user later moves the previous point (the resume
+  // position should follow the moved point, not stay frozen at the original
+  // placement).
+  const lastPlaced = state.traceLastBatch[state.traceLastBatch.length - 1];
+  state.traceResumeFrom = { x: lastPlaced.x, y: lastPlaced.y, name: lastPlaced.name };
+  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all, or mouse down again to continue from ${lastPlaced.name}.`, 'warn');
   state.tracePoints = [];
   state.tracePreview = [];
   state.traceLastPoint = null;
+  state.traceResuming = false;
   // Clear the preview path
   clearTracePreview();
   renderAll();
@@ -3178,6 +3223,11 @@ function undoLastTrace() {
   state.traceBatchCounter = Math.max(0, state.traceBatchCounter - state.traceLastBatch.length);
   const count = state.traceLastBatch.length;
   state.traceLastBatch = null;
+  // The undo removed the most recent stroke — its end point is no longer
+  // a valid resume target, so clear the resume context. The next stroke
+  // will start fresh at the user's click.
+  state.traceResumeFrom = null;
+  state.traceResuming = false;
   // Disable undo if no more batches
   if (!state.eraserLastSweep || state.eraserLastSweep.length === 0) {
     updateUndoButton();
