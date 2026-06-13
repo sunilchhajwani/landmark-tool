@@ -89,6 +89,9 @@
   #btnTrace.active {
     background: #2c8aff; border-color: #2c8aff; color: white;
   }
+  #btnNode.active {
+    background: #ff8800; border-color: #ff8800; color: white;
+  }
   /* Cursor when eraser is active */
   body.eraser-active #stage-wrap { cursor: none; }
 
@@ -133,7 +136,10 @@
   }
   #dropzone.drag-over { background: #1a2540; color: #6a9fff; }
   #stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
-  #bgImg { position: absolute; top: 0; left: 0; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+  #bgImg {
+    position: absolute; top: 0; left: 0; pointer-events: none; user-select: none; -webkit-user-drag: none;
+    filter: contrast(var(--contrast, 100%)) brightness(var(--brightness, 100%)) saturate(var(--saturate, 100%));
+  }
   #overlaySvg { position: absolute; top: 0; left: 0; pointer-events: none; }
   #overlaySvg .interactive { pointer-events: all; cursor: grab; }
   #overlaySvg .interactive.dragging { cursor: grabbing; }
@@ -187,6 +193,103 @@
     z-index: 12; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
   }
 
+  /* SIMPLE CURVE EDITOR — one big white circle per anchor */
+  body.curve-mode #stage-wrap { cursor: default; }
+  .curve-banner {
+    position: absolute;
+    top: 10px; left: 50%; transform: translateX(-50%);
+    background: #ff8800; color: white;
+    padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500;
+    z-index: 12; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  /* Big white circle — the handle you drag */
+  #overlaySvg .cv-handle {
+    fill: #ffffff;
+    stroke: #ff8800;
+    stroke-width: 3;
+    cursor: grab;
+    pointer-events: all;
+  }
+  #overlaySvg .cv-handle:hover { fill: #fff5e0; stroke-width: 4; }
+  #overlaySvg .cv-handle.dragging { cursor: grabbing; fill: #ffe0b0; }
+  /* Dashed orange line from anchor to handle */
+  #overlaySvg .cv-handle-line {
+    stroke: #ff8800;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    fill: none;
+    pointer-events: none;
+  }
+  /* Wide invisible stroke over the curve — click anywhere to insert a point */
+  #overlaySvg .cv-curve-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 20;
+    cursor: copy;
+    pointer-events: stroke;
+  }
+  /* NODE TOOL — Inkscape-style Bezier handle editing */
+  body.node-mode #stage-wrap { cursor: default; }
+  .node-banner {
+    position: absolute;
+    top: 10px; left: 50%; transform: translateX(-50%);
+    background: #ff8800; color: white;
+    padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 500;
+    z-index: 12; box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+  /* Anchor point (selected) - larger white circle */
+  #overlaySvg .node-anchor {
+    fill: #ffffff;
+    stroke: #ff8800;
+    stroke-width: 3;
+    cursor: grab;
+    pointer-events: all;
+    r: 9;
+  }
+  #overlaySvg .node-anchor:hover { fill: #fff5e0; stroke-width: 4; }
+  #overlaySvg .node-anchor.dragging { cursor: grabbing; fill: #ffe0b0; }
+  #overlaySvg .node-anchor.selected { stroke: #ffffff; stroke-width: 4; }
+  /* Handle circles (in/out) */
+  #overlaySvg .node-handle {
+    fill: #ff8800;
+    stroke: #ffffff;
+    stroke-width: 2;
+    cursor: grab;
+    pointer-events: all;
+    r: 6;
+  }
+  #overlaySvg .node-handle:hover { fill: #ffaa22; stroke-width: 3; }
+  #overlaySvg .node-handle.dragging { cursor: grabbing; fill: #ffcc66; }
+  /* Handle type indicators */
+  #overlaySvg .node-handle.smooth { fill: #5fb8ff; stroke: #ffffff; }
+  #overlaySvg .node-handle.smooth:hover { fill: #8fcfff; }
+  #overlaySvg .node-handle.symmetric { fill: #5fd178; stroke: #ffffff; }
+  #overlaySvg .node-handle.symmetric:hover { fill: #8fe89a; }
+  #overlaySvg .node-handle.cusp { fill: #ff7faa; stroke: #ffffff; }
+  #overlaySvg .node-handle.cusp:hover { fill: #ffa8cc; }
+  #overlaySvg .node-handle.auto { fill: #8a8a92; stroke: #ffffff; }
+  #overlaySvg .node-handle.auto:hover { fill: #aaaaaa; }
+  /* Dashed line from anchor to handle */
+  #overlaySvg .node-handle-line {
+    stroke: #ff8800;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    fill: none;
+    pointer-events: none;
+  }
+  #overlaySvg .node-handle-line.smooth { stroke: #5fb8ff; }
+  #overlaySvg .node-handle-line.symmetric { stroke: #5fd178; }
+  #overlaySvg .node-handle-line.cusp { stroke: #ff7faa; }
+  #overlaySvg .node-handle-line.auto { stroke: #8a8a92; }
+  /* Wide invisible stroke over the curve — click anywhere to insert a point */
+  #overlaySvg .node-curve-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 20;
+    cursor: copy;
+    pointer-events: stroke;
+  }
+
   /* Trace mode banner */
   .trace-badge {
     position: absolute;
@@ -202,26 +305,6 @@
   /* Trace preview line (drawn over the image as the user drags) */
   #tracePreview {
     position: absolute; pointer-events: none; z-index: 11;
-  }
-
-  /* Trace-group polylines (rendered between landmarks that share a
-     user-named trace group, e.g. "lv_endocardium"). Drawn under the
-     landmark circles so the dots stay on top. */
-  .trace-polyline {
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    opacity: 0.85;
-    pointer-events: stroke;  /* allow right-click on the line for insert */
-    cursor: copy;
-  }
-  .trace-polyline.live {
-    stroke-dasharray: 4 3;
-    opacity: 0.9;
-    pointer-events: none;     /* live preview doesn't accept clicks */
-  }
-  .trace-polyline.closed {
-    /* closed traces are drawn as a loop — same line, just sealed */
   }
 
   /* Eraser brush cursor (SVG circle following the mouse) */
@@ -292,52 +375,6 @@
   .edge-status-computing { background: #3a2c10; color: #ffb454; border-color: #5a4520; }
   .edge-status-ready   { background: #143a1f; color: #5fd178; border-color: #205a30; }
   .edge-status-error   { background: #3a1018; color: #ff6b78; border-color: #5a2030; }
-
-  /* ---- Phase list (v1.6) ---- */
-  #phaseList { list-style: none; padding: 0; margin: 0; }
-  #phaseList li {
-    background: #0e0e10; border: 1px solid #2a2a30; border-radius: 4px;
-    padding: 6px 8px; margin-bottom: 4px; font-size: 12px;
-    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  }
-  #phaseList li.active { border-color: #2c8aff; background: #102035; }
-  #phaseList li.empty { opacity: 0.55; }
-  #phaseList .p-swatch {
-    width: 14px; height: 14px; border-radius: 50%;
-    border: 1px solid #00000060; flex-shrink: 0; cursor: pointer;
-  }
-  #phaseList .p-name {
-    flex: 1; min-width: 80px;
-    background: transparent; border: 1px solid transparent; color: #e6e6e6;
-    padding: 2px 4px; font-size: 12px; font-family: inherit; border-radius: 3px;
-  }
-  #phaseList .p-name:hover { border-color: #2a2a30; }
-  #phaseList .p-name:focus { outline: none; border-color: #2c8aff; background: #18181b; }
-  #phaseList .p-count {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 10px; color: #8a8a92;
-  }
-  #phaseList .p-act {
-    background: #2a2a30; border: 1px solid #3a3a40; color: #c8c8ce;
-    padding: 2px 6px; font-size: 10px; border-radius: 3px; cursor: pointer;
-  }
-  #phaseList .p-act:hover { background: #3a3a40; }
-  #phaseList .p-act.on { background: #2c8aff; border-color: #2c8aff; color: white; }
-  #phaseList .p-del {
-    background: none; border: none; color: #8a8a92;
-    padding: 0 4px; cursor: pointer; font-size: 13px; line-height: 1;
-  }
-  #phaseList .p-del:hover { color: #ff8088; }
-  #phaseList .p-badge {
-    font-size: 9px; padding: 1px 5px; border-radius: 8px;
-    background: #2c8aff; color: white; letter-spacing: 0.04em;
-  }
-
-  /* Reference phase polylines (v1.6) — drawn below the interactive SVG */
-  #overlaySvgPhases {
-    position: absolute; top: 0; left: 0;
-    pointer-events: none;
-  }
 </style>
 </head>
 <body>
@@ -357,6 +394,46 @@
         </div>
         <input type="file" id="fileImg" accept="image/*" style="display:none">
         <input type="file" id="fileJson" accept=".json,application/json" style="display:none">
+      </div>
+
+      <div class="section" style="border: 2px solid #5f4cff; background: #15102a; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px;">
+        <h2 style="color: #9d8aff;">Animation Sequence / Frames</h2>
+        <div class="row">
+          <label>Active Frame</label>
+          <select id="selActiveFrame" style="flex: 1;"></select>
+        </div>
+        <div class="btn-row" style="margin-top:6px">
+          <button id="btnAddFrame" style="flex:1">+ Add Frame</button>
+          <button id="btnDelFrame" class="danger" style="flex:1">Delete Frame</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label>Fading Opacity</label>
+          <input type="range" id="sliderOnionOpacity" min="0" max="100" value="30" style="flex: 1;">
+          <span id="txtOnionOpacity" style="font-size: 11px; min-width: 30px; text-align: right;">30%</span>
+        </div>
+        <p class="help" style="margin-top:6px">Add sequential frames to capture motion. Landmarks are automatically cloned to ensure point correspondence. The simulator will morph between them in sequence.</p>
+      </div>
+
+      <div class="section" style="border: 1px solid #ff9d5f; background: #261b15; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px;">
+        <h2 style="color: #ff9d5f;">Image Adjustments</h2>
+        <div class="row">
+          <label>Contrast</label>
+          <input type="range" id="sliderContrast" min="50" max="250" value="100" style="flex: 1;">
+          <span id="txtContrast" style="font-size: 11px; min-width: 30px; text-align: right;">100%</span>
+        </div>
+        <div class="row">
+          <label>Brightness</label>
+          <input type="range" id="sliderBrightness" min="50" max="200" value="100" style="flex: 1;">
+          <span id="txtBrightness" style="font-size: 11px; min-width: 30px; text-align: right;">100%</span>
+        </div>
+        <div class="row">
+          <label>Saturation</label>
+          <input type="range" id="sliderSaturate" min="0" max="200" value="100" style="flex: 1;">
+          <span id="txtSaturate" style="font-size: 11px; min-width: 30px; text-align: right;">100%</span>
+        </div>
+        <div class="btn-row" style="margin-top: 6px;">
+          <button id="btnResetAdjust" style="width: 100%;">Reset Adjustments</button>
+        </div>
       </div>
 
       <div class="section" style="border: 1px solid #2c5cff; background: #0f1a30; border-radius: 6px; padding: 12px 14px; margin-bottom: 18px;">
@@ -417,7 +494,6 @@
         </div>
         <input type="file" id="filePreset" accept=".json,application/json" style="display:none">
         <div id="presetTip" class="tip" style="display:none"></div>
-        <div id="phaseTip" class="tip" style="display:none"></div>
         <p class="help" style="margin-top:4px">For first-time use of a new image, place landmarks by hand then "Save current as preset" — next time, just pick your preset and drag any misaligned points. Coordinates are stored as fractions of image size, so presets adapt to any image dimensions.</p>
       </div>
 
@@ -456,20 +532,13 @@
       </div>
 
       <div class="section">
-        <h2>Phases <span id="phaseCount" style="color:#5a5a62">(0)</span></h2>
-        <div class="btn-row">
-          <button id="btnNewPhase" title="Create a new empty phase and make it active. Previous phases can be shown as a faint reference while you trace the new one.">+ New phase</button>
-        </div>
-        <ul id="phaseList"></ul>
-        <p class="help" style="margin-top:4px">A phase is a named set of traced points. New traces land in the <strong>active</strong> phase (highlighted). Turn on <em>reference</em> on a phase to keep it visible faintly while you trace another. Press <kbd>P</kbd> to add a new phase.</p>
-      </div>
-
-      <div class="section">
         <h2>Landmarks <span id="lmCount" style="color:#5a5a62">(0)</span></h2>
         <div class="btn-row">
           <button id="btnEraser" disabled title="Eraser mode: click and drag across points to delete them. Adjust brush size below. Press Esc to exit.">🩹 Eraser</button>
           <button id="btnTrace" disabled title="Trace mode: click and drag along a structure to drop points at regular intervals. Adjust interval below. Press Esc to exit.">✏️ Trace</button>
-          <button id="btnUndoErase" class="danger" disabled title="Restore the last batch of points deleted by the eraser (or trace)">↶ Undo</button>
+          <button id="btnCurve" disabled title="CURVE mode: turns every landmark into a draggable handle. Drag the white circle at any point to bend the curve through it. Click anywhere on a curve to insert a new point. Right-click an anchor to delete it. Press Esc to exit.">⤴️ Curve</button>
+          <button id="btnNode" disabled title="NODE tool: select anchors to edit Bezier handles independently. Shift-click handle to cycle type (auto/smooth/symmetric/cusp). Click curve to insert. Right-click anchor to delete. Esc to exit.">⬠ Node</button>
+          <button id="btnUndoErase" class="danger" disabled title="No pending eraser sweep or trace batch to undo">↶ Undo</button>
         </div>
         <div class="row" style="margin-top:6px">
           <label>Eraser</label>
@@ -560,25 +629,7 @@
           <button id="btnExportJson" class="primary" disabled>Export JSON</button>
           <button id="btnExportSvg" disabled>Export SVG</button>
         </div>
-        <div class="btn-row" style="margin-top:6px">
-          <button id="btnCopySimPrompt" disabled>📋 Copy sim prompt</button>
-          <button id="btnDownloadSimPrompt" disabled>Download .md</button>
-        </div>
-        <div class="row" style="margin-top:6px">
-          <label>Test sample</label>
-          <select id="sampleTestSel">
-            <option value="">— pick a test case —</option>
-            <option value="chart">Chart (blood glucose)</option>
-            <option value="photo">Photo (portrait)</option>
-            <option value="diagram">Diagram (flow chart)</option>
-            <option value="plan">Floor plan</option>
-            <option value="empty">Empty (no landmarks)</option>
-          </select>
-        </div>
-        <div class="btn-row" style="margin-top:4px">
-          <button id="btnShowSample">Preview sample prompt</button>
-        </div>
-        <p class="help" style="margin-top:4px">JSON = full simulator spec for CLI (Gemini/Claude). Sim prompt = ready-to-paste instructions + spec for the CLI to consume. SVG = portable image+landmarks file.</p>
+        <p class="help" style="margin-top:4px">JSON = coordinates only (for simulator). SVG = portable image+landmarks file.</p>
       </div>
 
       <div class="section">
@@ -590,13 +641,14 @@
           <p><kbd>Alt+drag</kbd> → pan</p>
           <p><kbd>Click</kbd> point in list → select &amp; highlight</p>
           <p><kbd>Del</kbd> on selected → remove landmark</p>
-          <p><kbd>P</kbd> → new phase (for multi-phase traces)</p>
+          <p><kbd>⤴️ Curve</kbd> → drag points, click curve to add, right-click to delete</p>
+          <p><kbd>⬠ Node</kbd> → click anchor to select, drag handles to edit Bezier curves, Shift-click handle to cycle type</p>
         </div>
       </div>
 
     </div>
     <footer>
-      <div class="help">v1.6 · Multi-phase tracing · Drop any image, place landmarks, export.</div>
+      <div class="help">v1.0 · Drop any image, place landmarks, export.</div>
       <div class="help" style="margin-top:6px;font-size:10px;color:#5a5a62">
         Built with <a href="https://hermes-agent.nousresearch.com/docs" target="_blank" rel="noopener" style="color:#7a8aff;text-decoration:none">Hermes Agent</a>
       </div>
@@ -607,8 +659,6 @@
     <div id="dropzone">Drop an image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" in the sidebar</span></div>
     <div id="stage">
       <img id="bgImg" alt="">
-      <!-- v1.6: reference-phase polylines render here, below the interactive overlay -->
-      <svg id="overlaySvgPhases" xmlns="http://www.w3.org/2000/svg"></svg>
       <svg id="overlaySvg" xmlns="http://www.w3.org/2000/svg"></svg>
       <svg id="eraserCursor" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
         <circle class="outer" cx="100" cy="100" r="20" />
@@ -623,6 +673,8 @@
     <div id="edgeBadge" class="edge-badge edge-badge-idle">Edge map: not computed</div>
     <div id="eraserBadge" class="eraser-badge" style="display:none">🩹 Eraser mode — click and drag to delete points · Esc to exit</div>
     <div id="traceBadge" class="trace-badge" style="display:none">✏️ Trace mode — click and drag along a structure to drop points · Esc to exit</div>
+    <div id="curveBanner" class="curve-banner" style="display:none">⤴️ Curve mode — drag the white circles to bend the curve, click the curve to add a point, right-click a circle to delete it · Esc to exit</div>
+    <div id="nodeBanner" class="node-banner" style="display:none">⬠ Node tool — click an anchor to select it, drag handles to edit curves. Shift-click handle to cycle type (auto/smooth/symmetric/cusp). Click curve to insert point. Right-click anchor to delete. Esc to exit</div>
     <div id="status">
       <span id="statusLeft">No image loaded</span>
       <span id="statusRight"></span>
@@ -637,16 +689,127 @@
 // =====================================================================
 
 const state = {
-  image: null,             // HTMLImageElement
-  imageName: '',
-  imageDataUrl: '',        // for SVG embed
-  naturalW: 0, naturalH: 0,
+  activeFrameIdx: 0,       // index of active frame (0, 1, 2...)
+  frames: [                // array of frame data objects
+    {
+      landmarks: [],
+      image: null,
+      imageName: '',
+      imageDataUrl: '',
+      naturalW: 0,
+      naturalH: 0,
+      edgeMap: null,
+      edgeW: 0,
+      edgeH: 0,
+      edgeReady: false,
+      edgeComputing: false
+    }
+  ],
+
+  get landmarks() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].landmarks : [];
+  },
+  set landmarks(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].landmarks = val;
+    }
+  },
+
+  get image() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].image : null;
+  },
+  set image(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].image = val;
+    }
+  },
+
+  get imageName() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].imageName : '';
+  },
+  set imageName(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].imageName = val;
+    }
+  },
+
+  get imageDataUrl() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].imageDataUrl : '';
+  },
+  set imageDataUrl(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].imageDataUrl = val;
+    }
+  },
+
+  get naturalW() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].naturalW : 0;
+  },
+  set naturalW(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].naturalW = val;
+    }
+  },
+
+  get naturalH() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].naturalH : 0;
+  },
+  set naturalH(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].naturalH = val;
+    }
+  },
+
+  get edgeMap() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].edgeMap : null;
+  },
+  set edgeMap(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].edgeMap = val;
+    }
+  },
+
+  get edgeW() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].edgeW : 0;
+  },
+  set edgeW(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].edgeW = val;
+    }
+  },
+
+  get edgeH() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].edgeH : 0;
+  },
+  set edgeH(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].edgeH = val;
+    }
+  },
+
+  get edgeReady() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].edgeReady : false;
+  },
+  set edgeReady(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].edgeReady = val;
+    }
+  },
+
+  get edgeComputing() {
+    return this.frames[this.activeFrameIdx] ? this.frames[this.activeFrameIdx].edgeComputing : false;
+  },
+  set edgeComputing(val) {
+    if (this.frames[this.activeFrameIdx]) {
+      this.frames[this.activeFrameIdx].edgeComputing = val;
+    }
+  },
+
   scale: 1,                // display zoom
   panX: 0, panY: 0,        // display pan
   pxPerCm: null,           // calibration
   calOrigin: null,         // {x,y} first cal point
   calSecond: null,         // {x,y} second cal point
-  landmarks: [],           // [{id, name, type, x, y, color, group}]
   selectedId: null,
   showPoints: true,
   showLabels: true,
@@ -658,19 +821,12 @@ const state = {
   presets: {},             // {presetName: {landmarks: [{name, x_frac, y_frac, color, group}]}}
   activePreset: null,      // name of currently applied preset (for "re-apply")
   presetLandmarkIds: {},   // {landmarkName: id} for re-apply tracking
-  // Edge detection (computed on demand from the loaded image)
-  edgeMap: null,           // Float32Array of edge magnitudes (1D, row-major)
-  edgeW: 0, edgeH: 0,      // dimensions of edgeMap
   edgeScale: 1,            // scale factor from original image to edgeMap
-  edgeReady: false,        // true once computed
-  edgeComputing: false,    // true while async compute is running
   snapRadius: 30,          // snap search radius in pixels
   snapEnabled: true,       // whether new placements auto-snap
-  // Eraser tool
   eraserActive: false,     // true when eraser mode is on
   eraserRadius: 20,        // brush size in pixels
   eraserLastSweep: null,   // [{id, name, x, y, color, group}] — points removed in last sweep (for undo)
-  // Trace tool
   traceActive: false,      // true when trace mode is on
   traceInterval: 20,       // min distance (px) between placed points during a trace
   traceLastPoint: null,    // {x, y} last point placed in current trace
@@ -678,19 +834,16 @@ const state = {
   tracePoints: [],         // [{x, y, snapped}] points placed in current trace
   traceLastBatch: null,    // [lm, ...] points placed in last completed trace (for undo)
   traceBatchCounter: 0,    // incrementing counter for trace_NNN naming
-  traceGroupCounter: {},   // {groupName: nextSeq} for "<name>_1, _2, _3..." naming
-  traceGroups: {},         // {groupName: {style, closed, color, members: [lmName,...]}}
-                            // populated when user names a trace, used by render + export
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
   traceColor: '#2c8aff',   // current trace color (changes per trace via UI)
-  // Phases (v1.6) — a phase is a named group of trace points. The active
-  // phase is where new trace points land. Non-active phases can be shown
-  // faintly as a reference when tracing later phases.
-  phases: [],              // [{id, name, color, visible, asReference, opacity, pointIds: Set([id,...])}]
-  activePhaseId: null,     // id of the phase new trace points are added to
-  nextPhaseId: 1,          // monotonic id
+  curveMode: false,        // true when simple curve edit mode is on
+  curveDragId: null,       // id of landmark currently being dragged in curve mode
+  nodeMode: false,         // true when Node tool (Inkscape-style) is active
+  nodeSelectedId: null,    // id of selected anchor in node mode
+  nodeDragHandle: null,    // {id, which: 'in'|'out'} handle being dragged
+  onionOpacity: 0.30,      // opacity of previous frame onion skin (0.0 to 1.0)
 };
 
 const COLORS = ['#5fd178','#5fb8ff','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
@@ -717,7 +870,7 @@ const PRESET_PLAX_NORMAL = {
   // point connects back to the first.
   groups: [
     // LV cavity boundary — a closed smooth loop forming the inner wall
-    { id: 'lv_cavity', style: 'smooth', closed: true, color: '#5fd178', members: [
+    { style: 'smooth', closed: true, color: '#5fd178', members: [
       'ao_root_posterior_wall',  // top-right of LV
       'septum_basal',
       'septum_mid',
@@ -728,14 +881,14 @@ const PRESET_PLAX_NORMAL = {
       'posterior_wall_basal',    // bottom-right, back to start
     ]},
     // Mitral valve — annulus to leaflet tips (open shape, smooth)
-    { id: 'mitral_valve', style: 'smooth', closed: false, color: '#5fb8ff', members: [
+    { style: 'smooth', closed: false, color: '#5fb8ff', members: [
       'mv_annulus_anterior',
       'mv_anterior_leaflet_tip',
       'mv_posterior_leaflet_tip',
       'mv_annulus_posterior',
     ]},
     // Aortic root — closed smooth loop of the wall and cusps
-    { id: 'aortic_root', style: 'smooth', closed: true, color: '#ff7faa', members: [
+    { style: 'smooth', closed: true, color: '#ff7faa', members: [
       'ao_root_anterior_wall',
       'av_left_coronary_cusp',
       'av_non_coronary_cusp',
@@ -743,17 +896,17 @@ const PRESET_PLAX_NORMAL = {
       'av_right_coronary_cusp',
     ]},
     // Left atrium boundary — closed smooth loop
-    { id: 'left_atrium', style: 'smooth', closed: true, color: '#c88aff', members: [
+    { style: 'smooth', closed: true, color: '#c88aff', members: [
       'la_anterior_wall',
       'la_posterior_wall',
     ]},
     // RVOT — straight line (a flow tract, not a chamber)
-    { id: 'rvot_tract', style: 'straight', closed: false, color: '#ffd45f', members: [
+    { style: 'straight', closed: false, color: '#ffd45f', members: [
       'rvot_anterior',
       'rvot_center',
     ]},
     // Reference points — no connection (free)
-    { id: 'reference_points', style: 'free', closed: false, color: '#ff9d5f', members: [
+    { style: 'free', closed: false, color: '#ff9d5f', members: [
       'descending_aorta',
       'pericardium_apex',
     ]},
@@ -828,8 +981,6 @@ const $ = (id) => document.getElementById(id);
 window.addEventListener('load', () => {
   bindUI();
   loadBuiltInPresets();
-  // v1.6: always start with one default phase so the first trace has a home
-  ensureDefaultPhase();
   setMode('edit');
   setStatus('Drop an image to begin.', '');
 });
@@ -873,6 +1024,18 @@ function refreshPresetDropdown() {
 // UI BINDING
 // =====================================================================
 function bindUI() {
+  // Animation Sequence
+  $('selActiveFrame').onchange = (e) => {
+    switchFrame(parseInt(e.target.value));
+  };
+  $('btnAddFrame').onclick = () => addSequenceFrame();
+  $('btnDelFrame').onclick = () => deleteSequenceFrame();
+  $('sliderOnionOpacity').oninput = (e) => {
+    state.onionOpacity = parseInt(e.target.value) / 100;
+    $('txtOnionOpacity').textContent = e.target.value + '%';
+    render();
+  };
+
   // File inputs
   $('btnLoadImg').onclick = () => $('fileImg').click();
   $('btnLoadJson').onclick = () => $('fileJson').click();
@@ -934,6 +1097,30 @@ function bindUI() {
   $('btnEdit').onclick = () => setMode('edit');
   $('btnPreview').onclick = () => setMode('preview');
 
+  // Image adjustments
+  const updateImageFilters = () => {
+    const contrast = $('sliderContrast').value;
+    const brightness = $('sliderBrightness').value;
+    const saturate = $('sliderSaturate').value;
+    $('txtContrast').textContent = contrast + '%';
+    $('txtBrightness').textContent = brightness + '%';
+    $('txtSaturate').textContent = saturate + '%';
+    
+    const bgImg = $('bgImg');
+    bgImg.style.setProperty('--contrast', contrast + '%');
+    bgImg.style.setProperty('--brightness', brightness + '%');
+    bgImg.style.setProperty('--saturate', saturate + '%');
+  };
+  $('sliderContrast').oninput = updateImageFilters;
+  $('sliderBrightness').oninput = updateImageFilters;
+  $('sliderSaturate').oninput = updateImageFilters;
+  $('btnResetAdjust').onclick = () => {
+    $('sliderContrast').value = 100;
+    $('sliderBrightness').value = 100;
+    $('sliderSaturate').value = 100;
+    updateImageFilters();
+  };
+
   // Display
   $('showPoints').onchange = (e) => { state.showPoints = e.target.checked; render(); };
   $('showLabels').onchange = (e) => { state.showLabels = e.target.checked; render(); };
@@ -968,18 +1155,11 @@ function bindUI() {
   $('btnAddPoint').onclick = () => setStatus('Right-click on the image to place a point.', 'warn');
   $('btnClearAll').onclick = () => {
     if (state.landmarks.length === 0) return;
-    if (confirm(`Delete all ${state.landmarks.length} landmarks?\n\nAll phases will also be removed (a fresh "Phase 1" will be created).`)) {
+    if (confirm(`Delete all ${state.landmarks.length} landmarks?`)) {
       state.landmarks = []; state.selectedId = null;
       state.eraserLastSweep = null; state.traceLastBatch = null;
       state.traceBatchCounter = 0;
-      state.traceGroupCounter = {};
-      state.traceGroups = {};
-      // v1.6: reset all phases, then re-seed a single default phase
-      state.phases = [];
-      state.nextPhaseId = 1;
-      state.activePhaseId = null;
-      ensureDefaultPhase();
-      $('btnUndoErase').disabled = true;
+      updateUndoButton();
       renderAll();
     }
   };
@@ -1000,6 +1180,10 @@ function bindUI() {
 
   // Trace
   $('btnTrace').onclick = () => setTraceActive(!state.traceActive);
+
+  // Simple curve editor
+  $('btnCurve').onclick = () => setCurveMode(!state.curveMode);
+  $('btnNode').onclick = () => setNodeMode(!state.nodeMode);
   $('traceIntervalSel').onchange = (e) => {
     state.traceInterval = parseInt(e.target.value) || 20;
   };
@@ -1025,17 +1209,6 @@ function bindUI() {
   $('btnExportJson').onclick = exportJSON;
   $('btnExportSvg').onclick = exportSVG;
 
-  // Phases (v1.6)
-  $('btnNewPhase').onclick = () => {
-    const ph = createPhase(null, PHASE_COLORS[(state.nextPhaseId - 1) % PHASE_COLORS.length]);
-    setActivePhase(ph.id);
-    setStatus(`Created phase "${ph.name}" — now active. New traces will land here.`, 'ok');
-    showPhaseTip();
-  };
-  $('btnCopySimPrompt').onclick = copySimPrompt;
-  $('btnDownloadSimPrompt').onclick = downloadSimPrompt;
-  $('btnShowSample').onclick = showSamplePrompt;
-
   // Canvas
   $('overlaySvg').addEventListener('contextmenu', onContextMenu);
   $('stage-wrap').addEventListener('contextmenu', (e) => {
@@ -1053,6 +1226,12 @@ function bindUI() {
 
   // Hide context menu on any click
   $('ctxmenu').addEventListener('click', (e) => e.stopPropagation());
+
+  // Initialize frames UI
+  refreshFramesUI();
+
+  // Initialize Undo button label/title for the empty state.
+  updateUndoButton();
 }
 
 function setMode(m) {
@@ -1079,14 +1258,20 @@ function loadImageFile(file) {
       state.imageDataUrl = e.target.result;
       state.naturalW = img.naturalWidth;
       state.naturalH = img.naturalHeight;
+      
+      state.image = img;
+      state.imageName = file.name;
+      state.imageDataUrl = e.target.result;
+      state.naturalW = img.naturalWidth;
+      state.naturalH = img.naturalHeight;
+
+      refreshFramesUI();
+
       $('bgImg').src = e.target.result;
       $('bgImg').width = state.naturalW;
       $('bgImg').height = state.naturalH;
       $('overlaySvg').setAttribute('width', state.naturalW);
       $('overlaySvg').setAttribute('height', state.naturalH);
-      // v1.6: keep the reference-phase SVG aligned with the overlay
-      $('overlaySvgPhases').setAttribute('width', state.naturalW);
-      $('overlaySvgPhases').setAttribute('height', state.naturalH);
       $('stage').style.width = state.naturalW + 'px';
       $('stage').style.height = state.naturalH + 'px';
       // Fit to viewport
@@ -1095,12 +1280,12 @@ function loadImageFile(file) {
       $('btnAddPoint').disabled = false;
       $('btnExportJson').disabled = false;
       $('btnExportSvg').disabled = false;
-      $('btnCopySimPrompt').disabled = false;
-      $('btnDownloadSimPrompt').disabled = false;
       $('btnComputeEdges').disabled = false;
       $('btnSnapAll').disabled = false;
       $('btnEraser').disabled = false;
       $('btnTrace').disabled = false;
+      $('btnCurve').disabled = false;
+      $('btnNode').disabled = false;
       // Reset edge map for new image
       state.edgeMap = null;
       state.edgeW = state.edgeH = 0;
@@ -1114,13 +1299,8 @@ function loadImageFile(file) {
       state.eraserLastSweep = null;
       state.traceLastBatch = null;
       state.traceBatchCounter = 0;
-      $('btnUndoErase').disabled = true;
-      // v1.6: keep existing phases across image loads (they're a
-      // property of the workflow, not the image). Ensure at least one
-      // phase exists in case the user hit "Clear all" before loading.
-      ensureDefaultPhase();
+      updateUndoButton();
       setStatus(`Loaded ${file.name} · ${state.naturalW}×${state.naturalH}px`, 'ok');
-      renderPhasesList();
       renderAll();
       showWelcomeTip();
       // Auto-compute edges in background for faster first snap
@@ -1129,6 +1309,143 @@ function loadImageFile(file) {
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function refreshFramesUI() {
+  const sel = $('selActiveFrame');
+  if (!sel) return;
+  sel.innerHTML = '';
+  state.frames.forEach((frame, idx) => {
+    const opt = document.createElement('option');
+    opt.value = idx;
+    opt.textContent = `Frame ${idx + 1}` + (frame.imageName ? ` (${frame.imageName})` : ' (No image)');
+    if (idx === state.activeFrameIdx) {
+      opt.selected = true;
+    }
+    sel.appendChild(opt);
+  });
+  $('btnDelFrame').disabled = state.frames.length <= 1;
+}
+
+function switchFrame(idx) {
+  if (idx < 0 || idx >= state.frames.length) return;
+  if (state.activeFrameIdx === idx) return;
+  loadFrame(idx);
+}
+
+function loadFrame(idx) {
+  state.activeFrameIdx = idx;
+  const frame = state.frames[idx];
+
+  // If the target frame has no landmarks, but some other frame does,
+  // clone landmarks from another frame to preserve point correspondence
+  // (excluding trace points so they remain frame-specific and fade correctly).
+  if (frame.landmarks.length === 0) {
+    const donorFrame = state.frames.find(f => f.landmarks && f.landmarks.length > 0);
+    if (donorFrame) {
+      frame.landmarks = JSON.parse(JSON.stringify(
+        donorFrame.landmarks.filter(l => l.group !== 'trace' && !(l.name && l.name.startsWith('trace_')))
+      ));
+    }
+  }
+
+  // Update UI background image
+  if (frame.image) {
+    $('bgImg').src = frame.imageDataUrl;
+    $('bgImg').width = frame.naturalW;
+    $('bgImg').height = frame.naturalH;
+    $('overlaySvg').setAttribute('width', frame.naturalW);
+    $('overlaySvg').setAttribute('height', frame.naturalH);
+    $('stage').style.width = frame.naturalW + 'px';
+    $('stage').style.height = frame.naturalH + 'px';
+    $('dropzone').style.display = 'none';
+    fitToViewport();
+
+    // Update edge map visual status
+    if (frame.edgeReady) {
+      setEdgeStatus('ready', `Edge map: ready · ${frame.edgeW}×${frame.edgeH}px · ${state.snapRadius}px radius`);
+      if (edgeOverlayVisible) {
+        renderEdgeOverlay();
+      } else {
+        hideEdgeOverlay();
+      }
+    } else {
+      hideEdgeOverlay();
+      if (frame.edgeComputing) {
+        setEdgeStatus('computing', 'Edge map: computing…');
+      } else {
+        setEdgeStatus('idle', 'Edge map: not computed');
+      }
+    }
+  } else {
+    // No image loaded for this frame yet
+    $('bgImg').src = '';
+    $('overlaySvg').removeAttribute('width');
+    $('overlaySvg').removeAttribute('height');
+    $('stage').style.width = '';
+    $('stage').style.height = '';
+    $('dropzone').style.display = 'flex';
+    $('dropzone').innerHTML = `Drop Frame ${idx + 1} image here<br><span style="font-size:12px;color:#5a5a62">or click "Load image…" in the sidebar</span>`;
+    hideEdgeOverlay();
+    setEdgeStatus('idle', 'Edge map: not computed');
+  }
+
+  // Enable or disable snap all / compute edges buttons depending on image presence
+  const hasImage = !!frame.image;
+  $('btnComputeEdges').disabled = !hasImage;
+  $('btnSnapAll').disabled = !hasImage;
+
+  refreshFramesUI();
+  if (state.curveMode) setCurveMode(false);
+  renderAll();
+  setStatus(`Switched to Frame ${idx + 1}`, 'ok');
+}
+
+function addSequenceFrame() {
+  // Clone coordinates from active frame (excluding trace points to allow independent tracing per frame)
+  const currentFrame = state.frames[state.activeFrameIdx];
+  const newLandmarks = JSON.parse(JSON.stringify(
+    state.landmarks.filter(l => l.group !== 'trace' && !(l.name && l.name.startsWith('trace_')))
+  ));
+
+  // Create new frame inheriting same image info
+  const newFrame = {
+    landmarks: newLandmarks,
+    image: currentFrame.image,
+    imageName: currentFrame.imageName,
+    imageDataUrl: currentFrame.imageDataUrl,
+    naturalW: currentFrame.naturalW,
+    naturalH: currentFrame.naturalH,
+    edgeMap: currentFrame.edgeMap,
+    edgeW: currentFrame.edgeW,
+    edgeH: currentFrame.edgeH,
+    edgeReady: currentFrame.edgeReady,
+    edgeComputing: currentFrame.edgeComputing
+  };
+
+  state.frames.push(newFrame);
+  const newIdx = state.frames.length - 1;
+  loadFrame(newIdx);
+  setStatus(`Added Frame ${newIdx + 1}`, 'ok');
+}
+
+function deleteSequenceFrame() {
+  if (state.frames.length <= 1) {
+    alert("Cannot delete the only frame.");
+    return;
+  }
+  if (!confirm(`Delete the current Frame ${state.activeFrameIdx + 1}?`)) {
+    return;
+  }
+
+  const toDelete = state.activeFrameIdx;
+  let newIdx = toDelete - 1;
+  if (newIdx < 0) newIdx = 0;
+
+  state.frames.splice(toDelete, 1);
+  state.activeFrameIdx = newIdx;
+  loadFrame(newIdx);
+  setStatus(`Deleted Frame ${toDelete + 1}`, 'ok');
 }
 
 function fitToViewport() {
@@ -1199,24 +1516,36 @@ function addLandmark(x, y, name) {
     x = Math.round(x / gridPx) * gridPx;
     y = Math.round(y / gridPx) * gridPx;
   }
-  const lm = {
-    id: state.nextId++,
-    name: name || `lm_${String(state.nextId - 1).padStart(3, '0')}`,
-    type: 'point',
-    x, y,
-    color: COLORS[(state.landmarks.length) % COLORS.length],
-  };
-  state.landmarks.push(lm);
-  state.selectedId = lm.id;
+  const id = state.nextId++;
+  const lmName = name || `lm_${String(id - 1).padStart(3, '0')}`;
+  const color = COLORS[(state.landmarks.length) % COLORS.length];
+
+  // Add to all frames to maintain correspondence
+  state.frames.forEach((frame) => {
+    const lm = {
+      id,
+      name: lmName,
+      type: 'point',
+      x, y,
+      color,
+      handleIn: { x: 0, y: 0 },
+      handleOut: { x: 0, y: 0 },
+      handleType: 'auto',
+    };
+    frame.landmarks.push(lm);
+  });
+
+  state.selectedId = id;
+  const currentLm = state.landmarks.find(l => l.id === id);
+
   // Auto-snap to nearest edge if enabled and edge map is ready
   if (state.snapEnabled && state.edgeReady) {
-    snapLandmark(lm, true);
+    snapLandmark(currentLm, true);
   } else if (state.snapEnabled && !state.edgeReady && !state.edgeComputing) {
-    // Trigger edge computation in background; will not snap this one retroactively
     computeEdgeMap();
   }
   renderAll();
-  return lm;
+  return currentLm;
 }
 
 // =====================================================================
@@ -1228,40 +1557,51 @@ function applyPreset(name, isReapply) {
   if (!state.image) { setStatus('Load an image first.', 'warn'); return; }
 
   if (!isReapply) {
-    // Confirm replace if there are existing landmarks
     if (state.landmarks.length > 0) {
-      if (!confirm(`Apply preset "${name}"? This will replace the ${state.landmarks.length} existing landmarks.`)) return;
+      if (!confirm(`Apply preset "${name}"? This will replace the ${state.landmarks.length} existing landmarks on ALL frames.`)) return;
     }
   }
 
-  // Wipe and re-place
-  state.landmarks = [];
+  state.nextId = 1;
   state.presetLandmarkIds = {};
-  const W = state.naturalW, H = state.naturalH;
-  for (const def of preset.landmarks) {
-    const lm = {
-      id: state.nextId++,
-      name: def.name,
-      type: def.type || 'point',
-      x: def.x_frac * W,
-      y: def.y_frac * H,
-      color: def.color || COLORS[state.landmarks.length % COLORS.length],
-      group: def.group || null,
-    };
-    state.landmarks.push(lm);
-    state.presetLandmarkIds[def.name] = lm.id;
-  }
+
+  // Re-populate all frames
+  state.frames.forEach((frame) => {
+    frame.landmarks = [];
+    const W = frame.naturalW || state.naturalW;
+    const H = frame.naturalH || state.naturalH;
+    let lmCounter = 1;
+    for (const def of preset.landmarks) {
+      const lm = {
+        id: lmCounter++,
+        name: def.name,
+        type: def.type || 'point',
+        x: def.x_frac * W,
+        y: def.y_frac * H,
+        color: def.color || COLORS[(lmCounter - 2) % COLORS.length],
+        group: def.group || null,
+        handleIn: def.handleIn || { x: 0, y: 0 },
+        handleOut: def.handleOut || { x: 0, y: 0 },
+        handleType: def.handleType || 'auto',
+      };
+      frame.landmarks.push(lm);
+      if (frame === state.frames[state.activeFrameIdx]) {
+        state.presetLandmarkIds[def.name] = lm.id;
+      }
+    }
+  });
+
+  state.nextId = preset.landmarks.length + 1;
   state.activePreset = name;
   state.selectedId = null;
   $('btnReapplyPreset').disabled = false;
   $('btnSaveAsPreset').disabled = false;
-  // Show topology legend if the preset defines groups
-  const hasGroups = state.presets[name] && state.presets[name].groups;
+  const hasGroups = preset.groups;
   $('topologyLegend').style.display = hasGroups ? 'block' : 'none';
   renderAll();
-  setStatus(`Applied preset "${name}" — ${state.landmarks.length} landmarks placed. Drag any to adjust.`, 'ok');
-  showPresetTip(name, state.landmarks.length);
-  // Auto-snap all landmarks to edges
+  setStatus(`Applied preset "${name}" to all frames. Drag any to adjust.`, 'ok');
+  showPresetTip(name, preset.landmarks.length);
+  
   if (state.snapEnabled) {
     if (state.edgeReady) {
       snapAllLandmarks(true);
@@ -1290,38 +1630,90 @@ function applyPreset(name, isReapply) {
 //      valve leaflets, which are free references
 
 // Build the connection list from the active preset's groups + current
-// landmark positions. Returns [{style, color, points: [{x,y,name}, ...]}]
-function computeConnections(presetName) {
-  if (!presetName) return [];
-  const preset = state.presets[presetName];
-  if (!preset || !preset.groups) return [];
-
-  // Build a name -> landmark lookup
-  const byName = {};
-  for (const lm of state.landmarks) byName[lm.name] = lm;
-
+// landmark positions. Returns [{style, color, points: [{x,y,name, handleIn, handleOut, handleType}, ...]}]
+function computeConnections(presetName, landmarksArray) {
+  const lms = landmarksArray || state.landmarks;
   const out = [];
-  for (const group of preset.groups) {
-    if (group.style === 'free') continue; // no connections for free points
-    const points = [];
-    for (const name of group.members) {
-      const lm = byName[name];
-      if (lm) points.push({ x: lm.x, y: lm.y, name: lm.name });
+
+  // 1. If a preset name is active, load preset connections
+  if (presetName) {
+    const preset = state.presets[presetName];
+    if (preset && preset.groups) {
+      const byName = {};
+      for (const lm of lms) byName[lm.name] = lm;
+
+      for (const group of preset.groups) {
+        if (group.style === 'free') continue; // no connections for free points
+        const points = [];
+        for (const name of group.members) {
+          const lm = byName[name];
+          if (lm) {
+            points.push({
+              x: lm.x,
+              y: lm.y,
+              name: lm.name,
+              handleIn: lm.handleIn || { x: 0, y: 0 },
+              handleOut: lm.handleOut || { x: 0, y: 0 },
+              handleType: lm.handleType || 'auto',
+            });
+          }
+        }
+        if (points.length >= 2) {
+          out.push({
+            style: group.style,
+            closed: !!group.closed,
+            color: group.color || '#888',
+            points,
+          });
+        }
+      }
     }
-    if (points.length < 2) continue; // need at least 2 to connect
-    out.push({
-      style: group.style,
-      closed: !!group.closed,
-      color: group.color || '#888',
-      points,
-    });
   }
+
+  // 2. Automatically connect trace points (group === 'trace' or name starting with 'trace_')
+  const tracePoints = lms.filter(lm => lm.group === 'trace' || (lm.name && lm.name.startsWith('trace_')));
+  if (tracePoints.length >= 2) {
+    // Sort by name suffix digit sequence (e.g. trace_001, trace_002) to ensure chronological sequence
+    tracePoints.sort((a, b) => {
+      const numA = parseInt(a.name.replace(/\D/g, '')) || a.id;
+      const numB = parseInt(b.name.replace(/\D/g, '')) || b.id;
+      return numA - numB;
+    });
+
+    // Group trace points by color swatch (separate curves are drawn per color)
+    const traceGroups = {};
+    tracePoints.forEach(lm => {
+      const col = lm.color || '#2c8aff';
+      if (!traceGroups[col]) traceGroups[col] = [];
+      traceGroups[col].push(lm);
+    });
+
+    for (const col of Object.keys(traceGroups)) {
+      const pts = traceGroups[col];
+      if (pts.length >= 2) {
+        out.push({
+          style: 'smooth',
+          closed: false,
+          color: col,
+          points: pts.map(lm => ({
+            x: lm.x,
+            y: lm.y,
+            name: lm.name,
+            handleIn: lm.handleIn || { x: 0, y: 0 },
+            handleOut: lm.handleOut || { x: 0, y: 0 },
+            handleType: lm.handleType || 'auto',
+          })),
+        });
+      }
+    }
+  }
+
   return out;
 }
 
 // Build SVG path 'd' attribute for a connection group.
 // style='straight' → M + L commands (polygon if closed, polyline if open)
-// style='smooth'  → M + C commands (Catmull-Rom converted to cubic Bézier)
+// style='smooth'  → M + C commands (explicit Bezier handles if available, else Catmull-Rom)
 function connectionPathD(conn) {
   const pts = conn.points;
   if (pts.length === 0) return '';
@@ -1334,9 +1726,88 @@ function connectionPathD(conn) {
     return d;
   }
   if (conn.style === 'smooth') {
+    // Check if any point has explicit handles (handleType !== 'auto')
+    const hasExplicitHandles = pts.some(p => p.handleType && p.handleType !== 'auto');
+    if (hasExplicitHandles) {
+      return bezierPathFromPoints(pts, conn.closed);
+    }
     return smoothPath(pts, conn.closed);
   }
   return '';
+}
+
+// Generate a cubic Bezier path using explicit handles from each point.
+// Each point can have: handleIn (incoming handle), handleOut (outgoing handle), handleType.
+// handleType: 'auto' = use Catmull-Rom, 'smooth' = collinear handles, 'symmetric' = collinear + equal length, 'cusp' = independent
+function bezierPathFromPoints(pts, closed) {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  if (pts.length === 2) {
+    // 2 points: use handles if available, else straight line
+    const p1 = pts[0], p2 = pts[1];
+    const h1out = p1.handleOut || { x: 0, y: 0 };
+    const h2in = p2.handleIn || { x: 0, y: 0 };
+    if (p1.handleType !== 'auto' && p2.handleType !== 'auto' && (h1out.x !== 0 || h1out.y !== 0 || h2in.x !== 0 || h2in.y !== 0)) {
+      return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} C ${(p1.x + h1out.x).toFixed(2)} ${(p1.y + h1out.y).toFixed(2)}, ${(p2.x + h2in.x).toFixed(2)} ${(p2.y + h2in.y).toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    }
+    return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+
+  const n = pts.length;
+  const get = (i) => {
+    if (closed) return pts[((i % n) + n) % n];
+    if (i < 0) return pts[0];
+    if (i >= n) return pts[n - 1];
+    return pts[i];
+  };
+
+  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+  const segCount = closed ? n : n - 1;
+
+  for (let i = 0; i < segCount; i++) {
+    const p1 = get(i);
+    const p2 = get(i + 1);
+
+    // Get effective outgoing handle for p1
+    let c1x, c1y;
+    if (p1.handleType !== 'auto' && p1.handleOut && (p1.handleOut.x !== 0 || p1.handleOut.y !== 0)) {
+      c1x = p1.x + p1.handleOut.x;
+      c1y = p1.y + p1.handleOut.y;
+    } else {
+      // Auto: Catmull-Rom (central difference, /6 form). Clamp to the same
+      // cap used by getAutoHandlePosition so the rendered curve's control
+      // points match the visible handle circle exactly.
+      const p0 = get(i - 1);
+      const p3 = get(i + 1);
+      const ax = (p3.x - p0.x) / 6;
+      const ay = (p3.y - p0.y) / 6;
+      const [cx, cy] = clampHandleVector(ax, ay);
+      c1x = p1.x + cx;
+      c1y = p1.y + cy;
+    }
+
+    // Get effective incoming handle for p2
+    let c2x, c2y;
+    if (p2.handleType !== 'auto' && p2.handleIn && (p2.handleIn.x !== 0 || p2.handleIn.y !== 0)) {
+      c2x = p2.x + p2.handleIn.x;
+      c2y = p2.y + p2.handleIn.y;
+    } else {
+      // Auto: Catmull-Rom. Clamp the same way as c1 for visual consistency
+      // between the curve and the handle circle.
+      const p1_ = get(i);
+      const p3 = get(i + 2);
+      const ax = -(p3.x - p1_.x) / 6;
+      const ay = -(p3.y - p1_.y) / 6;
+      const [cx, cy] = clampHandleVector(ax, ay);
+      c2x = p2.x + cx;
+      c2y = p2.y + cy;
+    }
+
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+  }
+
+  if (closed) d += ' Z';
+  return d;
 }
 
 // Generate a smooth path through points using Catmull-Rom converted to
@@ -1446,6 +1917,9 @@ function saveCurrentAsPreset() {
       y_frac: +(l.y / H).toFixed(4),
       color: l.color,
       group: l.group || null,
+      handleIn: l.handleIn || { x: 0, y: 0 },
+      handleOut: l.handleOut || { x: 0, y: 0 },
+      handleType: l.handleType || 'auto',
     })),
   };
   refreshPresetDropdown();
@@ -1488,41 +1962,63 @@ function applySpecialPreset(kind, n, isReapply) {
     const label = kind === 'blank' ? 'blank (no landmarks)'
       : kind === 'grid' ? `${n}×${n} uniform grid`
       : `adaptive ${n} (centered)`;
-    if (!confirm(`Apply ${label}? This will replace the ${state.landmarks.length} existing landmarks.`)) return;
+    if (!confirm(`Apply ${label}? This will replace the ${state.landmarks.length} existing landmarks on ALL frames.`)) return;
   }
-  state.landmarks = [];
+  
+  // Wipe all frames
+  state.frames.forEach(frame => {
+    frame.landmarks = [];
+  });
+  state.nextId = 1;
   state.presetLandmarkIds = {};
-  const W = state.naturalW, H = state.naturalH;
 
-  if (kind === 'grid') {
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        state.landmarks.push(makeGridPoint(i, j, n, W, H));
+  if (kind !== 'blank') {
+    state.frames.forEach((frame) => {
+      const W = frame.naturalW || state.naturalW;
+      const H = frame.naturalH || state.naturalH;
+      let localNextId = 1;
+
+      if (kind === 'grid') {
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            frame.landmarks.push({
+              id: localNextId++,
+              name: `p_${i}_${j}`,
+              type: 'point',
+              x: ((i + 0.5) / n) * W,
+              y: ((j + 0.5) / n) * H,
+              color: '#5f6fff',
+              handleIn: { x: 0, y: 0 },
+              handleOut: { x: 0, y: 0 },
+              handleType: 'auto',
+              group: 'grid',
+            });
+          }
+        }
+      } else if (kind === 'adaptive') {
+        const positions = centeredSamples(n, 2.0);
+        let idx = 0;
+        for (const fy of positions) {
+          for (const fx of positions) {
+            frame.landmarks.push({
+              id: localNextId++,
+              name: `a_${idx++}`,
+              type: 'point',
+              x: fx * W,
+              y: fy * H,
+              color: '#5f6fff',
+              handleIn: { x: 0, y: 0 },
+              handleOut: { x: 0, y: 0 },
+              handleType: 'auto',
+              group: 'adaptive',
+            });
+          }
+        }
       }
-    }
-  } else if (kind === 'adaptive') {
-    // Centered weighted sampling: rows/columns closer to image center
-    // are spaced more densely. Uses a power curve p=2 — points cluster
-    // in the central 50% of the image, sparser at the periphery.
-    // Same total count as uniform n×n, just redistributed.
-    const positions = centeredSamples(n, 2.0);
-    let idx = 0;
-    for (const fy of positions) {
-      for (const fx of positions) {
-        const lm = {
-          id: state.nextId++,
-          name: `a_${idx++}`,
-          type: 'point',
-          x: fx * W,
-          y: fy * H,
-          color: '#5f6fff',
-          group: 'adaptive',
-        };
-        state.landmarks.push(lm);
-      }
-    }
+    });
+
+    state.nextId = state.frames[state.activeFrameIdx].landmarks.length + 1;
   }
-  // kind === 'blank' leaves zero landmarks
 
   state.activePreset = kind === 'blank' ? '__blank__'
     : kind === 'grid' ? `__grid_${n}__`
@@ -1533,9 +2029,9 @@ function applySpecialPreset(kind, n, isReapply) {
   renderAll();
   const count = state.landmarks.length;
   const label = kind === 'blank' ? 'blank' : kind === 'grid' ? `${n}×${n} uniform grid` : `adaptive ${n} (centered)`;
-  setStatus(`Applied ${label} — ${count} landmark${count === 1 ? '' : 's'}.`, 'ok');
+  setStatus(`Applied ${label} to all frames — ${count} landmarks.`, 'ok');
   showPresetTip(state.activePreset, count);
-  // Auto-snap all landmarks to edges
+  
   if (state.snapEnabled && count > 0) {
     if (state.edgeReady) {
       snapAllLandmarks(true);
@@ -1621,9 +2117,8 @@ function computeEdgeMap() {
   return new Promise((resolve) => {
     setTimeout(() => {
       try {
-        const img = state.image;
-        // Downsample target ~400px wide
-        const targetW = Math.min(400, W0);
+        // Increased target width for much greater precision (up to 1024px)
+        const targetW = Math.min(1024, W0);
         const scale = targetW / W0;
         const targetH = Math.max(1, Math.round(H0 * scale));
 
@@ -1632,7 +2127,7 @@ function computeEdgeMap() {
         off.width = targetW;
         off.height = targetH;
         const ctx = off.getContext('2d');
-        ctx.drawImage(img, 0, 0, targetW, targetH);
+        ctx.drawImage(state.image, 0, 0, targetW, targetH);
         const imgData = ctx.getImageData(0, 0, targetW, targetH);
         const px = imgData.data;
         const W = targetW, H = targetH;
@@ -1644,17 +2139,28 @@ function computeEdgeMap() {
           gray[j] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
         }
 
-        // Apply a 3x3 box blur to reduce speckle noise before Sobel
+        // Apply a 5x5 Gaussian blur to reduce speckle noise before Sobel
         const blurred = new Float32Array(W * H);
-        for (let y = 1; y < H - 1; y++) {
-          for (let x = 1; x < W - 1; x++) {
-            let sum = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                sum += gray[(y + dy) * W + (x + dx)];
+        const k = [
+          1,  4,  6,  4, 1,
+          4, 16, 24, 16, 4,
+          6, 24, 36, 24, 6,
+          4, 16, 24, 16, 4,
+          1,  4,  6,  4, 1
+        ];
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (x < 2 || x >= W - 2 || y < 2 || y >= H - 2) {
+              blurred[y * W + x] = gray[y * W + x];
+            } else {
+              let sum = 0;
+              for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                  sum += gray[(y + dy) * W + (x + dx)] * k[(dy + 2) * 5 + (dx + 2)];
+                }
               }
+              blurred[y * W + x] = sum / 256;
             }
-            blurred[y * W + x] = sum / 9;
           }
         }
 
@@ -1879,11 +2385,10 @@ function exportCurrentPresetFile() {
 }
 
 function deleteLandmark(id) {
-  state.landmarks = state.landmarks.filter(l => l.id !== id);
-  // v1.6: keep phase.pointIds in sync
-  removeLandmarkFromPhase(id);
+  state.frames.forEach(frame => {
+    frame.landmarks = frame.landmarks.filter(l => l.id !== id);
+  });
   if (state.selectedId === id) state.selectedId = null;
-  renderPhasesList();
   renderAll();
 }
 
@@ -1964,19 +2469,27 @@ function eraseAtPoint(x, y) {
   if (!state.eraserLastSweep) {
     state.eraserLastSweep = [];
   }
-  // Mark deleted ones
+  
   const idsToDelete = new Set(toDelete.map(l => l.id));
-  for (const lm of toDelete) {
-    state.eraserLastSweep.push({ ...lm });
-  }
-  state.landmarks = state.landmarks.filter(l => !idsToDelete.has(l.id));
-  // v1.6: keep phase.pointIds in sync
-  for (const id of idsToDelete) removeLandmarkFromPhase(id);
+  
+  // Save states of all matching landmarks in all frames
+  state.frames.forEach((frame, idx) => {
+    frame.landmarks.forEach(lm => {
+      if (idsToDelete.has(lm.id)) {
+        state.eraserLastSweep.push({ ...lm, _frameIdx: idx });
+      }
+    });
+  });
+
+  // Delete from all frames
+  state.frames.forEach(frame => {
+    frame.landmarks = frame.landmarks.filter(l => !idsToDelete.has(l.id));
+  });
+
   if (state.selectedId && idsToDelete.has(state.selectedId)) {
     state.selectedId = null;
   }
-  $('btnUndoErase').disabled = false;
-  renderPhasesList();
+  updateUndoButton();
   return toDelete.length;
 }
 
@@ -1985,310 +2498,57 @@ function beginEraserSweep() {
   state.eraserLastSweep = null;
 }
 
+// LOW-severity fix: the Undo button is shared by eraser + trace. Reflect the
+// current pending action in its label and title so the user always knows
+// exactly what will be undone on click. Called at every point where the
+// pending-undo state changes.
+function updateUndoButton() {
+  const btn = $('btnUndoErase');
+  if (!btn) return;
+  const hasErase = state.eraserLastSweep && state.eraserLastSweep.length > 0;
+  const hasTrace = state.traceLastBatch && state.traceLastBatch.length > 0;
+  if (hasErase && hasTrace) {
+    btn.textContent = '↶ Undo (Erase or Trace)';
+    btn.title = 'Undo: eraser sweep or trace batch (will undo eraser first)';
+    btn.disabled = false;
+  } else if (hasErase) {
+    const n = state.eraserLastSweep.length;
+    btn.textContent = `↶ Undo Erase (${n})`;
+    btn.title = `Restore the ${n} landmark${n === 1 ? '' : 's'} deleted by the eraser`;
+    btn.disabled = false;
+  } else if (hasTrace) {
+    const n = state.traceLastBatch.length;
+    btn.textContent = `↶ Undo Trace (${n})`;
+    btn.title = `Remove the ${n} trace point${n === 1 ? '' : 's'} just placed`;
+    btn.disabled = false;
+  } else {
+    btn.textContent = '↶ Undo';
+    btn.title = 'No pending eraser sweep or trace batch to undo';
+    btn.disabled = true;
+  }
+}
+
 function undoLastErase() {
   if (!state.eraserLastSweep || state.eraserLastSweep.length === 0) return;
   // Restore the points
-  for (const lm of state.eraserLastSweep) {
-    // Recreate the landmark with its original id
-    state.landmarks.push(lm);
-    // v1.6: restore membership in its phase
-    if (lm.phaseId != null) {
-      const ph = getPhase(lm.phaseId);
-      if (ph) ph.pointIds.add(lm.id);
+  state.eraserLastSweep.forEach(lm => {
+    const frameIdx = lm._frameIdx;
+    delete lm._frameIdx;
+    if (state.frames[frameIdx]) {
+      state.frames[frameIdx].landmarks.push(lm);
     }
-    // Make sure nextId is past this id
     if (lm.id >= state.nextId) state.nextId = lm.id + 1;
-  }
-  const count = state.eraserLastSweep.length;
+  });
+  const count = new Set(state.eraserLastSweep.map(l => l.id)).size;
   state.eraserLastSweep = null;
   // Disable undo only if no other pending batch
   if (!state.traceLastBatch || state.traceLastBatch.length === 0) {
-    $('btnUndoErase').disabled = true;
+    updateUndoButton();
   }
   setStatus(`Restored ${count} landmark${count === 1 ? '' : 's'} from eraser.`, 'ok');
-  renderPhasesList();
   renderAll();
 }
 
-// PHASES (v1.6) — named groups of traced points. The active phase is
-// where new trace points land. Non-active phases can be shown faintly
-// as a reference when tracing later phases.
-// =====================================================================
-
-// Phase color palette — same swatches as the trace color picker, so
-// visual consistency is automatic.
-const PHASE_COLORS = ['#2c8aff','#5fd178','#ffd45f','#ff7faa','#c88aff','#ff9d5f','#5fffd1','#ff5f5f','#9dff5f','#5f6fff'];
-
-function ensureDefaultPhase() {
-  if (state.phases.length === 0) {
-    const ph = createPhase('Phase 1', PHASE_COLORS[0]);
-    state.activePhaseId = ph.id;
-  }
-  renderPhasesList();
-}
-
-function createPhase(name, color) {
-  const ph = {
-    id: state.nextPhaseId++,
-    name: name || `Phase ${state.nextPhaseId - 1}`,
-    color: color || PHASE_COLORS[(state.nextPhaseId - 1) % PHASE_COLORS.length],
-    visible: true,
-    asReference: false, // new phases are never references of themselves
-    opacity: 0.35,
-    pointIds: new Set(),
-  };
-  state.phases.push(ph);
-  // v1.6: when there are already 2+ phases, the new arrival becomes
-  // active and the previous non-active siblings default to reference
-  // ON (so the user sees the previous work faintly as they trace the
-  // new phase). The previously-active phase is unaffected (it stays
-  // active until setActivePhase runs).
-  if (state.phases.length >= 2) {
-    for (const sibling of state.phases) {
-      if (sibling.id === ph.id) continue;
-      if (sibling.id === state.activePhaseId) continue;
-      sibling.asReference = true;
-    }
-  }
-  renderPhasesList();
-  renderAll();
-  return ph;
-}
-
-function getPhase(id) { return state.phases.find(p => p.id === id) || null; }
-
-function getActivePhase() { return getPhase(state.activePhaseId); }
-
-function setActivePhase(id) {
-  if (id === state.activePhaseId) return;
-  const ph = getPhase(id);
-  if (!ph) return;
-  // v1.6: when switching active, the previous active phase becomes a
-  // reference (so the user sees the previous work faintly as they trace
-  // the new active phase). The new active's reference is forced off.
-  const prevActiveId = state.activePhaseId;
-  state.activePhaseId = id;
-  ph.asReference = false;
-  ph.visible = true;
-  if (prevActiveId != null && prevActiveId !== id) {
-    const prev = getPhase(prevActiveId);
-    if (prev && prev.visible) {
-      prev.asReference = true;
-    }
-  }
-  renderPhasesList();
-  renderAll();
-  updateTraceBadge();
-}
-
-function renamePhase(id, newName) {
-  const ph = getPhase(id);
-  if (!ph) return;
-  const trimmed = (newName || '').trim();
-  if (trimmed) ph.name = trimmed;
-  renderPhasesList();
-  updateTraceBadge();
-  renderStatus();
-}
-
-function setPhaseColor(id, color) {
-  const ph = getPhase(id);
-  if (!ph) return;
-  ph.color = color;
-  // Retroactively recolor all points in this phase
-  for (const lmId of ph.pointIds) {
-    const lm = state.landmarks.find(l => l.id === lmId);
-    if (lm) lm.color = color;
-  }
-  renderPhasesList();
-  renderAll();
-}
-
-function togglePhaseVisible(id) {
-  const ph = getPhase(id);
-  if (!ph) return;
-  ph.visible = !ph.visible;
-  renderPhasesList();
-  renderAll();
-}
-
-function togglePhaseReference(id) {
-  const ph = getPhase(id);
-  if (!ph) return;
-  // The active phase should never be a reference of itself
-  if (id === state.activePhaseId) return;
-  ph.asReference = !ph.asReference;
-  renderPhasesList();
-  renderAll();
-}
-
-function deletePhase(id, opts) {
-  const ph = getPhase(id);
-  if (!ph) return;
-  opts = opts || {};
-  // Refuse to delete the last phase — UI invariants need at least one
-  if (state.phases.length <= 1) {
-    setStatus('Cannot delete the only phase. Create another first if you want to remove this one.', 'warn');
-    return;
-  }
-  const isActive = id === state.activePhaseId;
-  const pointCount = ph.pointIds.size;
-  if (!opts.silent) {
-    const msg = pointCount > 0
-      ? `Delete phase "${ph.name}" and its ${pointCount} traced point${pointCount === 1 ? '' : 's'}?`
-      : `Delete empty phase "${ph.name}"?`;
-    if (!confirm(msg)) return;
-  }
-  // Remove the phase's points from state.landmarks
-  const ids = new Set(ph.pointIds);
-  state.landmarks = state.landmarks.filter(l => !ids.has(l.id));
-  // Remove the phase itself
-  state.phases = state.phases.filter(p => p.id !== id);
-  // If we deleted the active phase, fall back to the first remaining
-  if (isActive) {
-    state.activePhaseId = state.phases[0] ? state.phases[0].id : null;
-  }
-  renderPhasesList();
-  renderAll();
-  updateTraceBadge();
-  setStatus(`Deleted phase "${ph.name}".`, 'ok');
-}
-
-function moveLandmarkToPhase(lmId, targetPhaseId) {
-  const lm = state.landmarks.find(l => l.id === lmId);
-  if (!lm) return;
-  // Remove from current phase
-  for (const ph of state.phases) ph.pointIds.delete(lmId);
-  // Add to target phase
-  const target = getPhase(targetPhaseId);
-  if (!target) return;
-  target.pointIds.add(lmId);
-  lm.phaseId = targetPhaseId;
-  lm.color = target.color;
-  renderPhasesList();
-  renderAll();
-}
-
-// Remove a landmark id from whichever phase owns it. Call this whenever
-// a point is deleted (manually, by eraser, or by undo).
-function removeLandmarkFromPhase(lmId) {
-  for (const ph of state.phases) ph.pointIds.delete(lmId);
-}
-
-// List of phases that should render as faint reference polylines.
-// Active phase is excluded (it draws at full opacity via the normal
-// per-landmark render path).
-function getReferencePhases() {
-  return state.phases.filter(p => p.id !== state.activePhaseId && p.visible && p.asReference);
-}
-
-function renderPhasesList() {
-  const ul = $('phaseList');
-  if (!ul) return;
-  ul.innerHTML = '';
-  for (const ph of state.phases) {
-    const li = document.createElement('li');
-    const isActive = ph.id === state.activePhaseId;
-    li.className = isActive ? 'active' : '';
-    if (ph.pointIds.size === 0) li.classList.add('empty');
-
-    // Color swatch (click to change)
-    const sw = document.createElement('div');
-    sw.className = 'p-swatch';
-    sw.style.background = ph.color;
-    sw.title = 'Click to change color';
-    sw.onclick = () => {
-      const c = prompt(`Color for phase "${ph.name}" (hex, e.g. #2c8aff):`, ph.color);
-      if (c) setPhaseColor(ph.id, c);
-    };
-    li.appendChild(sw);
-
-    // Inline-editable name
-    const name = document.createElement('input');
-    name.type = 'text';
-    name.className = 'p-name';
-    name.value = ph.name;
-    name.title = 'Click to rename';
-    name.addEventListener('change', () => renamePhase(ph.id, name.value));
-    name.addEventListener('blur', () => renamePhase(ph.id, name.value));
-    name.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); name.blur(); }
-    });
-    li.appendChild(name);
-
-    // Point count
-    const cnt = document.createElement('span');
-    cnt.className = 'p-count';
-    cnt.textContent = `${ph.pointIds.size} pt${ph.pointIds.size === 1 ? '' : 's'}`;
-    li.appendChild(cnt);
-
-    // Active badge (only on active phase)
-    if (isActive) {
-      const badge = document.createElement('span');
-      badge.className = 'p-badge';
-      badge.textContent = 'ACTIVE';
-      li.appendChild(badge);
-    }
-
-    // Set-as-active button (only on non-active phases)
-    if (!isActive) {
-      const act = document.createElement('button');
-      act.className = 'p-act';
-      act.textContent = 'Set active';
-      act.title = 'Make this the phase new traces go into';
-      act.onclick = () => setActivePhase(ph.id);
-      li.appendChild(act);
-    }
-
-    // Reference toggle (only on non-active phases)
-    if (!isActive) {
-      const ref = document.createElement('button');
-      ref.className = 'p-act' + (ph.asReference ? ' on' : '');
-      ref.textContent = ph.asReference ? '◐ ref' : '○ ref';
-      ref.title = ph.asReference
-        ? 'Phase is shown faintly as a reference. Click to hide.'
-        : 'Show this phase faintly as a reference when tracing others.';
-      ref.onclick = () => togglePhaseReference(ph.id);
-      li.appendChild(ref);
-    }
-
-    // Visibility toggle
-    const vis = document.createElement('button');
-    vis.className = 'p-act' + (ph.visible ? ' on' : '');
-    vis.textContent = ph.visible ? '👁' : '—';
-    vis.title = ph.visible ? 'Phase is visible. Click to hide.' : 'Phase is hidden. Click to show.';
-    vis.onclick = () => togglePhaseVisible(ph.id);
-    li.appendChild(vis);
-
-    // Delete
-    const del = document.createElement('button');
-    del.className = 'p-del';
-    del.textContent = '×';
-    del.title = 'Delete this phase and its points';
-    del.onclick = () => deletePhase(ph.id);
-    li.appendChild(del);
-
-    ul.appendChild(li);
-  }
-  const c = $('phaseCount');
-  if (c) c.textContent = `(${state.phases.length})`;
-}
-
-function updateTraceBadge() {
-  const badge = $('traceBadge');
-  if (!badge) return;
-  const ph = getActivePhase();
-  if (ph) {
-    badge.textContent = `✏️ Trace mode → Phase "${ph.name}" — click and drag to drop points · Esc to exit`;
-  } else {
-    badge.textContent = '✏️ Trace mode — click and drag to drop points · Esc to exit';
-  }
-}
-
-// =====================================================================
-// TRACE TOOL — click and drag along a structure to drop points
-// at regular intervals. Each point auto-snaps to the nearest edge.
-// =====================================================================
 // =====================================================================
 // TRACE TOOL — click and drag along a structure to drop points
 // at regular intervals. Each point auto-snaps to the nearest edge.
@@ -2307,15 +2567,456 @@ function setTraceActive(active) {
   if (active) {
     const modeDesc = state.traceSnapMode === 'off' ? 'exact path (no snap)' :
                      state.traceSnapMode === 'path' ? 'path strip snap' : 'radius snap';
-    const ph = getActivePhase();
-    const phDesc = ph ? ` → Phase "${ph.name}"` : '';
-    setStatus(`Trace mode ON${phDesc} (${modeDesc}) — click and drag to drop points along a structure.`, 'warn');
+    setStatus(`Trace mode ON (${modeDesc}) — click and drag to drop points along a structure.`, 'warn');
   } else {
     setStatus('Trace mode OFF.', '');
     clearTracePreview();
   }
 }
 
+// =====================================================================
+// SIMPLE CURVE EDITOR
+// One draggable white circle per landmark. Drag to move the point;
+// the connection curves automatically re-shape. The user can also
+// click on a curve to insert a new point, or right-click a circle
+// to delete that landmark.
+// =====================================================================
+function setCurveMode(active) {
+  if (active) {
+    if (state.eraserActive) setEraserActive(false);
+    if (state.traceActive) setTraceActive(false);
+  }
+  state.curveMode = active;
+  document.body.classList.toggle('curve-mode', active);
+  $('btnCurve').classList.toggle('active', active);
+  $('curveBanner').style.display = active ? 'block' : 'none';
+  if (active) {
+    setStatus('Curve mode ON — drag the white circles to move points. Click on a curve to add a point. Right-click a circle to delete it. Esc to exit.', 'warn');
+  } else {
+    state.curveDragId = null;
+    setStatus('Curve mode OFF.', '');
+  }
+  render();
+}
+
+// Insert a new landmark on the clicked curve segment. New point goes on the
+// active frame only. The new point's color matches the connection.
+function insertCurvePoint(seg, fallbackX, fallbackY) {
+  // Use the actual closest point on the bezier (not the click position) so the
+  // new anchor lands ON the curve.
+  const x = seg.x, y = seg.y;
+  const conn = seg.conn;
+  // If any of the points in this connection is a trace point, treat the
+  // new point as a trace point too (auto-named trace_NNN with the
+  // existing batch counter).
+  let isTrace = false;
+  for (const p of conn.points) {
+    if (p.name && p.name.startsWith('trace_')) { isTrace = true; break; }
+  }
+  const id = state.nextId++;
+  let name, group, color = conn.color || '#2c8aff';
+  if (isTrace) {
+    state.traceBatchCounter++;
+    name = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
+    group = 'trace';
+  } else {
+    name = `p_${id}`;
+    group = null;
+  }
+  const lm = { id, name, type: 'point', x, y, color, group };
+  state.landmarks.push(lm);
+  renderAll();
+}
+
+// Pick a landmark handle under (x,y) in image coordinates
+function pickCurveHandle(x, y) {
+  const r = 14; // big pick radius — easy to grab
+  for (const lm of state.landmarks) {
+    const dx = lm.x - x, dy = lm.y - y;
+    if (dx*dx + dy*dy <= r*r) return lm;
+  }
+  return null;
+}
+
+// Pick a curve segment under (x,y) — returns {frac, segment} or null
+function pickCurveSegment(x, y) {
+  // Walk every connection, find closest point on any cubic Bezier segment within 8px
+  const conns = computeConnections(state.activePreset);
+  let best = null;
+  for (const conn of conns) {
+    if (conn.points.length < 2) continue;
+    const pts = conn.points;
+    const n = pts.length;
+    const closed = !!conn.closed;
+    const segCount = closed ? n : n - 1;
+    // Approximate handle for each anchor using Catmull-Rom
+    for (let i = 0; i < segCount; i++) {
+      const p1 = pts[i];
+      const p2 = pts[(i + 1) % n];
+      // Use the default Catmull-Rom cubic path (no overrides supported here)
+      const t = 0.5;
+      const pPrev = pts[i > 0 ? i - 1 : (closed ? n - 1 : 0)];
+      const pNext = pts[(i + 1) % n];
+      const pNext2 = pts[(i + 2) % n];
+      const c1x = p1.x + (pNext.x - pPrev.x) * t / 3;
+      const c1y = p1.y + (pNext.y - pPrev.y) * t / 3;
+      const c2x = p2.x - (pNext2.x - p1.x) * t / 3;
+      const c2y = p2.y - (pNext2.y - p1.y) * t / 3;
+      const closest = closestOnCubic(x, y, p1, {x:c1x,y:c1y}, {x:c2x,y:c2y}, p2);
+      if (closest.d <= 8 && (!best || closest.d < best.d)) {
+        best = { conn, segIdx: i, frac: closest.t, x: closest.x, y: closest.y, d: closest.d };
+      }
+    }
+  }
+  return best;
+}
+function closestOnCubic(qx, qy, P0, C0, C1, P1) {
+  const N = 20;
+  let best = { t: 0, x: P0.x, y: P0.y, d: Math.hypot(qx-P0.x, qy-P0.y) };
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const p = cubicAt(P0, C0, C1, P1, t);
+    const d = Math.hypot(qx - p.x, qy - p.y);
+    if (d < best.d) best = { t, x: p.x, y: p.y, d };
+  }
+  for (let k = 0; k < 4; k++) {
+    const dt = 1 / N / Math.pow(2, k);
+    for (const t of [best.t - dt, best.t + dt]) {
+      if (t < 0 || t > 1) continue;
+      const p = cubicAt(P0, C0, C1, P1, t);
+      const d = Math.hypot(qx - p.x, qy - p.y);
+      if (d < best.d) best = { t, x: p.x, y: p.y, d };
+    }
+  }
+  return best;
+}
+function cubicAt(P0, C0, C1, P1, t) {
+  const u = 1 - t;
+  const x = u*u*u*P0.x + 3*u*u*t*C0.x + 3*u*t*t*C1.x + t*t*t*P1.x;
+  const y = u*u*u*P0.y + 3*u*u*t*C0.y + 3*u*t*t*C1.y + t*t*t*P1.y;
+  return { x, y };
+}
+
+// =====================================================================
+// NODE TOOL — Inkscape-style Bezier handle editing
+// =====================================================================
+function setNodeMode(active) {
+  if (active) {
+    if (state.eraserActive) setEraserActive(false);
+    if (state.traceActive) setTraceActive(false);
+    if (state.curveMode) setCurveMode(false);
+  }
+  state.nodeMode = active;
+  document.body.classList.toggle('node-mode', active);
+  $('btnNode').classList.toggle('active', active);
+  $('nodeBanner').style.display = active ? 'block' : 'none';
+  if (active) {
+    setStatus('Node tool ON — click an anchor to select it, drag handles to edit curves. Shift-click handle to cycle type. Click curve to insert point. Right-click anchor to delete. Esc to exit.', 'warn');
+  } else {
+    state.nodeSelectedId = null;
+    state.nodeDragHandle = null;
+    setStatus('Node tool OFF.', '');
+  }
+  render();
+}
+
+function getNodeHandle(lm, which) {
+  if (!lm.handleIn) lm.handleIn = { x: 0, y: 0 };
+  if (!lm.handleOut) lm.handleOut = { x: 0, y: 0 };
+  if (!lm.handleType) lm.handleType = 'auto';
+  return which === 'in' ? lm.handleIn : lm.handleOut;
+}
+
+function getNodeHandlePos(lm, which) {
+  const h = getNodeHandle(lm, which);
+  return { x: lm.x + h.x, y: lm.y + h.y };
+}
+
+function getAutoHandlePosition(lm, which, pts, idx, closed) {
+  if (!pts || pts.length < 2) return { x: 0, y: 0 };
+  const n = pts.length;
+  const get = (i) => {
+    if (closed) return pts[((i % n) + n) % n];
+    return pts[Math.max(0, Math.min(n - 1, i))];
+  };
+
+  // Compute the raw (unclamped) auto handle vector from the local tangent.
+  let vx, vy;
+  if (which === 'out') {
+    const p1 = get(idx);
+    const p2 = get(idx + 1);
+    vx = (p2.x - p1.x) / 3;
+    vy = (p2.y - p1.y) / 3;
+  } else {
+    const p1 = get(idx - 1);
+    const p2 = get(idx);
+    vx = (p2.x - p1.x) / 3;
+    vy = (p2.y - p1.y) / 3;
+  }
+
+  // Clamp via the shared helper so the handle is always reachable on screen.
+  const [cx, cy] = clampHandleVector(vx, vy);
+  return { x: cx, y: cy };
+}
+
+// Clamp a Bezier control-point vector to a maximum length so the handle
+// end (which the user must grab to bend the curve) never lands far outside
+// the visible image. The cap is the smaller of:
+//   - a fixed 80px ceiling (absolute upper bound for any image size)
+//   - 10% of the image diagonal (scales with image resolution)
+// The /3 or /6 of the existing 1/3-neighbor math already keeps tight
+// traces short; this cap only kicks in for sparse traces or sharp curves
+// with very-far neighbors. Returns [cx, cy] (destructured tuple).
+function clampHandleVector(vx, vy) {
+  const len = Math.hypot(vx, vy);
+  if (len < 1e-6) return [0, 0];
+  const imgMax = state.image ? 0.10 * Math.hypot(state.naturalW, state.naturalH) : 80;
+  const hardCap = Math.min(80, imgMax);
+  if (len <= hardCap) return [vx, vy];
+  const k = hardCap / len;
+  return [vx * k, vy * k];
+}
+
+function getEffectiveHandle(lm, which, pts, idx, closed) {
+  const h = getNodeHandle(lm, which);
+  if (lm.handleType === 'auto' || (h.x === 0 && h.y === 0)) {
+    const auto = getAutoHandlePosition(lm, which, pts, idx, closed);
+    return { x: auto.x, y: auto.y };
+  }
+  return { x: h.x, y: h.y };
+}
+
+function applyHandleConstraints(lm, which) {
+  const h = getNodeHandle(lm, which);
+  const other = getNodeHandle(lm, which === 'in' ? 'out' : 'in');
+  
+  if (lm.handleType === 'smooth') {
+    // Collinear but lengths independent
+    const dx = h.x, dy = h.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0.01) {
+      other.x = -dx * (Math.sqrt(other.x * other.x + other.y * other.y) / len);
+      other.y = -dy * (Math.sqrt(other.x * other.x + other.y * other.y) / len);
+    }
+  } else if (lm.handleType === 'symmetric') {
+    // Collinear and equal length
+    other.x = -h.x;
+    other.y = -h.y;
+  }
+}
+
+function cycleHandleType(lm) {
+  const order = ['auto', 'smooth', 'symmetric', 'cusp'];
+  const idx = order.indexOf(lm.handleType || 'auto');
+  const next = order[(idx + 1) % order.length];
+  // When leaving 'auto', seed the stored handle positions to the current
+  // auto positions so the handles don't visually collapse to the anchor
+  // (which would make smooth/symmetric/cusp look broken right after cycle).
+  if ((lm.handleType || 'auto') === 'auto' && next !== 'auto') {
+    seedHandlesFromAuto(lm);
+  }
+  lm.handleType = next;
+  if (lm.handleType === 'auto') {
+    lm.handleIn = { x: 0, y: 0 };
+    lm.handleOut = { x: 0, y: 0 };
+  }
+  setStatus(`Handle type: ${lm.handleType}`, '');
+}
+
+// Copy the current auto-calculated handle positions into the landmark's
+// stored handleIn/handleOut so they become "real" handles the user can edit.
+// Called when the user starts dragging an auto handle (or shift-cycles out
+// of auto) — without this, the curve renderer would keep using the auto
+// calculation and the user's edits would be silently ignored.
+function seedHandlesFromAuto(lm) {
+  if (!lm.handleIn)  lm.handleIn  = { x: 0, y: 0 };
+  if (!lm.handleOut) lm.handleOut = { x: 0, y: 0 };
+  const conns = computeConnections(state.activePreset);
+  for (const conn of conns) {
+    const idx = conn.points.findIndex(p => p.name === lm.name);
+    if (idx >= 0) {
+      const inAuto  = getAutoHandlePosition(lm, 'in',  conn.points, idx, conn.closed);
+      const outAuto = getAutoHandlePosition(lm, 'out', conn.points, idx, conn.closed);
+      lm.handleIn.x  = inAuto.x;
+      lm.handleIn.y  = inAuto.y;
+      lm.handleOut.x = outAuto.x;
+      lm.handleOut.y = outAuto.y;
+      return;
+    }
+  }
+  // Free point (not in any connection) — nothing meaningful to seed; leave
+  // the defaults at {0,0} so the handles sit at the anchor until moved.
+}
+
+function pickNodeAnchor(x, y) {
+  const r = 14;
+  for (const lm of state.landmarks) {
+    const dx = lm.x - x, dy = lm.y - y;
+    if (dx * dx + dy * dy <= r * r) return lm;
+  }
+  return null;
+}
+
+function pickNodeHandle(x, y) {
+  const r = 10;
+  // Need connection info for auto handle calculation
+  const conns = computeConnections(state.activePreset);
+  // Build a map of landmark name -> {pts, idx, closed} for auto handle calc
+  const lmConnInfo = {};
+  for (const conn of conns) {
+    for (let i = 0; i < conn.points.length; i++) {
+      lmConnInfo[conn.points[i].name] = { pts: conn.points, idx: i, closed: conn.closed };
+    }
+  }
+  for (const lm of state.landmarks) {
+    for (const which of ['in', 'out']) {
+      // Use effective handle position (auto-calculated for 'auto' type)
+      const info = lmConnInfo[lm.name];
+      let hx, hy;
+      if (info && lm.handleType === 'auto') {
+        const auto = getAutoHandlePosition(lm, which, info.pts, info.idx, info.closed);
+        hx = lm.x + auto.x;
+        hy = lm.y + auto.y;
+      } else {
+        const h = getNodeHandlePos(lm, which);
+        hx = h.x;
+        hy = h.y;
+      }
+      const dx = hx - x, dy = hy - y;
+      if (dx * dx + dy * dy <= r * r) return { lm, which };
+    }
+  }
+  return null;
+}
+
+function insertNodePoint(seg, fallbackX, fallbackY) {
+  const x = seg.x, y = seg.y;
+  const conn = seg.conn;
+  let isTrace = false;
+  for (const p of conn.points) {
+    if (p.name && p.name.startsWith('trace_')) { isTrace = true; break; }
+  }
+  const id = state.nextId++;
+  let name, group, color = conn.color || '#2c8aff';
+  if (isTrace) {
+    state.traceBatchCounter++;
+    name = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
+    group = 'trace';
+  } else {
+    name = `p_${id}`;
+    group = null;
+  }
+  const lm = {
+    id, name, type: 'point', x, y, color, group,
+    handleIn: { x: 0, y: 0 },
+    handleOut: { x: 0, y: 0 },
+    handleType: 'auto',
+  };
+  state.landmarks.push(lm);
+  state.nodeSelectedId = id;
+  renderAll();
+}
+
+function getEffectiveHandlePos(lm, which, conns) {
+  // Find connection info for this landmark
+  for (const conn of conns) {
+    const idx = conn.points.findIndex(p => p.name === lm.name);
+    if (idx >= 0) {
+      if (lm.handleType === 'auto') {
+        const auto = getAutoHandlePosition(lm, which, conn.points, idx, conn.closed);
+        return { x: lm.x + auto.x, y: lm.y + auto.y };
+      }
+      break;
+    }
+  }
+  // Fallback to stored handle position
+  return getNodeHandlePos(lm, which);
+}
+
+function renderNodeHandles() {
+  if (!state.nodeMode) return;
+  const svg = $('overlaySvg');
+  const conns = computeConnections(state.activePreset);
+
+  // Draw invisible hit areas over curves
+  for (const conn of conns) {
+    if (conn.points.length < 2) continue;
+    const d = connectionPathD(conn);
+    if (!d) continue;
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hit.setAttribute('d', d);
+    hit.setAttribute('class', 'node-curve-hit');
+    svg.appendChild(hit);
+  }
+
+  // Build a name → {conn, idx, n, closed} map so we can detect endpoints
+  // (Inkscape-style: first point of an open path has only out-handle, last
+  // point has only in-handle, middle points and closed-path points have both).
+  const lmInfo = {};
+  for (const conn of conns) {
+    for (let i = 0; i < conn.points.length; i++) {
+      lmInfo[conn.points[i].name] = {
+        conn,
+        idx: i,
+        n: conn.points.length,
+        closed: !!conn.closed,
+      };
+    }
+  }
+
+  // Draw anchors for ALL landmarks (clickable to select), but only draw
+  // handle lines + handle circles for the currently SELECTED landmark.
+  // This matches Inkscape's node tool: handles are visible only for the
+  // active node, so the canvas stays uncluttered while editing.
+  for (const lm of state.landmarks) {
+    const selected = state.nodeSelectedId === lm.id;
+
+    if (selected) {
+      // Which handles are valid for this anchor? Interior + closed-path
+      // points: both. First point of open path: out only. Last point of
+      // open path: in only.
+      const info = lmInfo[lm.name];
+      const validHandles = [];
+      if (info) {
+        if (info.idx > 0)             validHandles.push('in');
+        if (info.idx < info.n - 1)    validHandles.push('out');
+        if (info.closed)              { validHandles.length = 0; validHandles.push('in', 'out'); }
+      } else {
+        // Landmark not in any connection (e.g., a free point) — show both
+        validHandles.push('in', 'out');
+      }
+
+      for (const which of validHandles) {
+        const h = getEffectiveHandlePos(lm, which, conns);
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', lm.x);
+        line.setAttribute('y1', lm.y);
+        line.setAttribute('x2', h.x);
+        line.setAttribute('y2', h.y);
+        line.setAttribute('class', `node-handle-line ${lm.handleType || 'auto'}`);
+        line.setAttribute('data-node-handle', String(lm.id));
+        line.setAttribute('data-node-which', which);
+        svg.appendChild(line);
+
+        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        c.setAttribute('cx', h.x);
+        c.setAttribute('cy', h.y);
+        c.setAttribute('class', `node-handle ${lm.handleType || 'auto'}` + (state.nodeDragHandle && state.nodeDragHandle.id === lm.id && state.nodeDragHandle.which === which ? ' dragging' : ''));
+        c.setAttribute('data-node-handle', String(lm.id));
+        c.setAttribute('data-node-which', which);
+        svg.appendChild(c);
+      }
+    }
+
+    // Draw anchor (always visible — click to select)
+    const a = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    a.setAttribute('cx', lm.x);
+    a.setAttribute('cy', lm.y);
+    a.setAttribute('class', 'node-anchor' + (selected ? ' selected' : ''));
+    a.setAttribute('data-node-anchor', String(lm.id));
+    svg.appendChild(a);
+  }
+}
 function applyTraceColorToPreview() {
   const path = $('tracePreviewPath');
   const dot = $('tracePreviewDot');
@@ -2359,9 +3060,8 @@ function beginTrace(x, y) {
   state.traceLastPoint = null;
   // Place the first point immediately
   addTracePoint(x, y, true);
-  // Update preview + repaint (so the live polyline appears under the dots)
+  // Update preview
   updateTracePreview();
-  render();
 }
 
 function continueTrace(x, y) {
@@ -2379,7 +3079,6 @@ function continueTrace(x, y) {
     }
   }
   updateTracePreview();
-  render();
 }
 
 function endTrace() {
@@ -2388,59 +3087,12 @@ function endTrace() {
     clearTracePreview();
     return;
   }
-  // If the trace has >=2 points, prompt for a group name. The name flows
-  // into the export topology (so e.g. "lv_endocardium" becomes a real
-  // exported wall, not a dead-end 'trace' group). The user can hit
-  // Cancel or leave blank to keep the auto-generated trace_NNN naming.
-  if (state.tracePoints.length >= 2) {
-    const defaultName = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
-    const entered = prompt(
-      `Name this trace (${state.tracePoints.length} points)?\n` +
-      `Used for export topology — e.g. "lv_endocardium", "mv_annulus".\n` +
-      `Leave blank to keep "${defaultName}".`,
-      defaultName
-    );
-    if (entered && entered.trim()) {
-      const gname = entered.trim().toLowerCase().replace(/\s+/g, '_');
-      relabelTraceBatch(gname);
-      // Register the group for rendering and export. If the group already
-      // exists from an earlier batch, append the new members to it
-      // instead of overwriting — this is how multi-segment traces for the
-      // same structure (e.g. continued after a pause) stay connected.
-      const newMembers = state.tracePoints.map(l => l.name);
-      if (state.traceGroups[gname]) {
-        state.traceGroups[gname].members =
-          state.traceGroups[gname].members.concat(newMembers);
-      } else {
-        state.traceGroups[gname] = {
-          style: 'smooth',         // default; user can edit later
-          closed: false,
-          color: state.traceColor,
-          members: newMembers,
-        };
-      }
-      setStatus(
-        `Trace "${gname}" placed (${state.tracePoints.length} pts). ` +
-        `↶ Undo removes the whole trace.`,
-        'ok'
-      );
-    } else {
-      setStatus(
-        `Trace placed ${state.tracePoints.length} point${state.tracePoints.length === 1 ? '' : 's'}. ` +
-        `Click ↶ Undo to remove them all.`,
-        'warn'
-      );
-    }
-  } else {
-    setStatus(
-      `Trace placed 1 point (need ≥2 to draw a line). Click ↶ Undo to remove.`,
-      'warn'
-    );
-  }
   state.traceLastBatch = state.tracePoints.slice();
   // Note: don't touch state.eraserLastSweep — eraser and trace have
   // independent undo states. The Undo button checks both.
-  $('btnUndoErase').disabled = false;
+  updateUndoButton();
+  const count = state.tracePoints.length;
+  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all.`, 'warn');
   state.tracePoints = [];
   state.tracePreview = [];
   state.traceLastPoint = null;
@@ -2449,54 +3101,22 @@ function endTrace() {
   renderAll();
 }
 
-// Rename every point in the current trace batch to "<group>_1, _2, _3..."
-// and set their group to the new name. Uses the per-group sequence
-// counter so re-naming the same group later continues the numbering.
-function relabelTraceBatch(gname) {
-  const seq = state.traceGroupCounter[gname] || 1;
-  state.traceGroupCounter[gname] = seq + state.tracePoints.length;
-  for (let i = 0; i < state.tracePoints.length; i++) {
-    const lm = state.tracePoints[i];
-    lm.name = `${gname}_${seq + i}`;
-    lm.group = gname;
-  }
-}
-
 function undoLastTrace() {
   if (!state.traceLastBatch || state.traceLastBatch.length === 0) return;
-  // Remember which group(s) were touched so we can clean up empty entries
-  const touchedGroups = new Set();
-  for (const lm of state.traceLastBatch) {
-    if (lm.group) touchedGroups.add(lm.group);
-  }
   // Remove all the trace points
   const idsToRemove = new Set(state.traceLastBatch.map(l => l.id));
-  state.landmarks = state.landmarks.filter(l => !idsToRemove.has(l.id));
-  // v1.6: keep phase.pointIds in sync
-  for (const id of idsToRemove) removeLandmarkFromPhase(id);
+  state.frames.forEach(frame => {
+    frame.landmarks = frame.landmarks.filter(l => !idsToRemove.has(l.id));
+  });
   // Decrement counter back by the number removed
   state.traceBatchCounter = Math.max(0, state.traceBatchCounter - state.traceLastBatch.length);
-  // If any of the touched trace groups are now empty, remove them.
-  for (const gname of touchedGroups) {
-    const tg = state.traceGroups[gname];
-    if (!tg) continue;
-    const remaining = tg.members.filter(nm =>
-      state.landmarks.find(l => l.name === nm)
-    );
-    if (remaining.length === 0) {
-      delete state.traceGroups[gname];
-    } else {
-      tg.members = remaining;
-    }
-  }
   const count = state.traceLastBatch.length;
   state.traceLastBatch = null;
   // Disable undo if no more batches
   if (!state.eraserLastSweep || state.eraserLastSweep.length === 0) {
-    $('btnUndoErase').disabled = true;
+    updateUndoButton();
   }
   setStatus(`Removed ${count} trace point${count === 1 ? '' : 's'}.`, 'ok');
-  renderPhasesList();
   renderAll();
 }
 
@@ -2506,13 +3126,8 @@ function addTracePoint(x, y, isFirst) {
   if (state.snapEnabled && state.edgeReady && state.traceSnapMode !== 'off') {
     let result;
     if (state.traceSnapMode === 'path' && !isFirst) {
-      // Snap to the strongest edge in a perpendicular strip along the
-      // local path tangent. This prevents the trace from jumping to
-      // unrelated edges (e.g., the opposite wall, a noise spike) — the
-      // search is constrained to edges along the path direction.
       result = snapToNearestEdgeAlongPath(x, y, state.traceSnapWidth);
     } else {
-      // Original circular search
       result = snapToNearestEdge(x, y, state.snapRadius);
     }
     if (result.magnitude > 0) {
@@ -2520,31 +3135,32 @@ function addTracePoint(x, y, isFirst) {
       py = result.y;
     }
   }
-  // When snap mode is 'off' (or snap is disabled / edge map not ready),
-  // the point lands exactly on the trace path with no offset.
-  // Increment batch counter and name
+  
   state.traceBatchCounter++;
   const name = `trace_${String(state.traceBatchCounter).padStart(3, '0')}`;
-  // v1.6: ensure a default phase exists and stamp the point with the
-  // active phase's id + colour. Defensive — should already exist from
-  // window.load, but this protects against early calls.
-  ensureDefaultPhase();
-  const activePh = getActivePhase();
-  const lmColor = activePh ? activePh.color : state.traceColor;
-  const phaseId = activePh ? activePh.id : null;
-  const lm = {
-    id: state.nextId++,
+  const id = state.nextId++;
+
+  // Add only to the current active frame (trace points are frame-specific)
+  state.landmarks.push({
+    id,
     name,
     type: 'point',
     x: px,
     y: py,
-    color: lmColor,
+    color: state.traceColor,
     group: 'trace',
-    phaseId,
-  };
-  state.landmarks.push(lm);
-  if (activePh) activePh.pointIds.add(lm.id);
-  state.tracePoints.push(lm);
+    // MED-severity fix: initialize Bezier handle fields so node-mode editing
+    // of trace points works on the first interaction (mirrors insertNodePoint).
+    // Without this, getNodeHandle backfills {x:0,y:0} on first read — fine for
+    // render, but a trace point opened in node mode before the first read can
+    // have undefined fields briefly visible to pickNodeHandle.
+    handleIn: { x: 0, y: 0 },
+    handleOut: { x: 0, y: 0 },
+    handleType: 'auto',
+  });
+
+  const currentLm = state.landmarks.find(l => l.id === id);
+  state.tracePoints.push(currentLm);
   state.traceLastPoint = { x: px, y: py };
 }
 
@@ -2643,13 +3259,21 @@ function selectLandmark(id) {
 }
 
 function renameLandmark(id, newName) {
-  const lm = state.landmarks.find(l => l.id === id);
-  if (lm) { lm.name = newName || lm.name; renderAll(); }
+  if (!newName) return;
+  state.frames.forEach(frame => {
+    const lm = frame.landmarks.find(l => l.id === id);
+    if (lm) lm.name = newName;
+  });
+  renderAll();
 }
 
 function changeColor(id, color) {
-  const lm = state.landmarks.find(l => l.id === id);
-  if (lm) { lm.color = color; renderAll(); }
+  if (!color) return;
+  state.frames.forEach(frame => {
+    const lm = frame.landmarks.find(l => l.id === id);
+    if (lm) lm.color = color;
+  });
+  renderAll();
 }
 
 // =====================================================================
@@ -2657,152 +3281,109 @@ function changeColor(id, color) {
 // =====================================================================
 function renderAll() { renderList(); render(); }
 
-// v1.6: which landmark ids are being drawn as reference polylines in
-// the lower SVG. The interactive overlay skips these to avoid double
-// rendering. Cached at the top of every render() so the lookup is O(1).
-function buildReferenceIdSet() {
-  const s = new Set();
-  for (const ph of getReferencePhases()) {
-    for (const id of ph.pointIds) s.add(id);
-  }
-  return s;
-}
-
 function render() {
-  // v1.6: reference phases go into the lower SVG first so the active
-  // phase's interactive landmarks draw on top.
-  renderReferencePhases();
   renderLandmarks();
-  renderTracePolylines();
+  renderCurveHandles();
+  renderNodeHandles();
   renderStatus();
 }
 
-// v1.6: draw a faint dashed polyline for every non-active reference
-// phase. Points are connected in the order they were placed (which
-// matches the trace order from addTracePoint). Each phase gets its own
-// color, dashed line, low opacity, no labels — purely a reference cue.
-function renderReferencePhases() {
-  const svg = $('overlaySvgPhases');
-  if (!svg) return;
-  svg.innerHTML = '';
-  for (const ph of getReferencePhases()) {
-    // Order points in the order they were placed (by id, which is
-    // monotonic in addTracePoint)
-    const pts = state.landmarks.filter(l => ph.pointIds.has(l.id));
-    pts.sort((a, b) => a.id - b.id);
-    if (pts.length < 2) {
-      // Single point — draw a tiny dot so it's still visible
-      for (const p of pts) {
-        const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        c.setAttribute('cx', p.x);
-        c.setAttribute('cy', p.y);
-        c.setAttribute('r', 3);
-        c.setAttribute('fill', ph.color);
-        c.setAttribute('opacity', ph.opacity);
-        c.setAttribute('pointer-events', 'none');
-        svg.appendChild(c);
-      }
-      continue;
-    }
-    // Build polyline
-    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    const d = pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-    poly.setAttribute('points', d);
-    poly.setAttribute('fill', 'none');
-    poly.setAttribute('stroke', ph.color);
-    poly.setAttribute('stroke-width', 1.5);
-    poly.setAttribute('stroke-linecap', 'round');
-    poly.setAttribute('stroke-linejoin', 'round');
-    poly.setAttribute('stroke-dasharray', '4 3');
-    poly.setAttribute('opacity', ph.opacity);
-    poly.setAttribute('pointer-events', 'none');
-    poly.setAttribute('class', 'phase-reference');
-    svg.appendChild(poly);
-    // Tiny circles at each point so single isolated points are still visible
-    for (const p of pts) {
-      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c.setAttribute('cx', p.x);
-      c.setAttribute('cy', p.y);
-      c.setAttribute('r', 2);
-      c.setAttribute('fill', ph.color);
-      c.setAttribute('opacity', Math.min(1, ph.opacity + 0.2));
-      c.setAttribute('pointer-events', 'none');
-      svg.appendChild(c);
-    }
-  }
-}
-
-// Draw polylines connecting landmarks that share a user-named trace
-// group (e.g. "lv_endocardium"). Drawn before landmark circles so the
-// dots render on top. Skipped in Preview mode to match connection style.
-//
-// Also draws the in-progress trace live: connects tracePoints in their
-// current placement order using the current trace color.
-function renderTracePolylines() {
+// In curve mode, draw a big white circle at every landmark and a dashed
+// line from each anchor to its curve so the user can see what to grab.
+function renderCurveHandles() {
+  if (!state.curveMode) return;
   const svg = $('overlaySvg');
-  // Remove any previously rendered polyline elements (they live in the
-  // same SVG as connections/landmarks, so we have to filter rather than
-  // clear the whole svg).
-  svg.querySelectorAll('.trace-polyline').forEach(el => el.remove());
 
-  if (isPreviewMode()) return; // same convention as computeConnections
-  const W = svg.clientWidth, H = svg.clientHeight;
-  if (!W || !H) return;
+  // 1) Draw a wide invisible hit-area over every connection so clicking
+  //    on a curve inserts a new point there.
+  const conns = computeConnections(state.activePreset);
+  for (const conn of conns) {
+    if (conn.points.length < 2) continue;
+    const d = connectionPathD(conn);
+    if (!d) continue;
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hit.setAttribute('d', d);
+    hit.setAttribute('class', 'cv-curve-hit');
+    hit.setAttribute('data-cv-hit', '1');
+    svg.appendChild(hit);
+  }
 
-  // Group landmarks by their group string, in order
-  const byGroup = {};
+  // 2) Draw a big white circle at every landmark (the draggable handle)
+  const r = 9;
   for (const lm of state.landmarks) {
-    if (!lm.group) continue;
-    if (!byGroup[lm.group]) byGroup[lm.group] = [];
-    byGroup[lm.group].push(lm);
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', lm.x);
+    c.setAttribute('cy', lm.y);
+    c.setAttribute('r', r);
+    c.setAttribute('class', 'cv-handle' + (state.curveDragId === lm.id ? ' dragging' : ''));
+    c.setAttribute('data-cv-handle', String(lm.id));
+    svg.appendChild(c);
   }
-
-  // Draw one polyline per named trace group registered in state.traceGroups
-  for (const gname of Object.keys(state.traceGroups)) {
-    const tg = state.traceGroups[gname];
-    const pts = (tg.members || []).map(nm => state.landmarks.find(l => l.name === nm)).filter(Boolean);
-    if (pts.length < 2) continue;
-    const closed = !!tg.closed;
-    const color = tg.color || '#5fb8ff';
-    drawTracePolyline(svg, pts, color, closed, gname);
-  }
-
-  // Live in-progress trace (no name yet, just visual feedback)
-  if (state.traceActive && state.tracePoints && state.tracePoints.length >= 2) {
-    drawTracePolyline(svg, state.tracePoints, state.traceColor, false, '__live__', /*live*/ true);
-  }
-}
-
-function drawTracePolyline(svg, pts, color, closed, groupName, live) {
-  const SVG_NS = 'http://www.w3.org/2000/svg';
-  const path = document.createElementNS(SVG_NS, 'path');
-  // Straight-line polyline for trace groups (matches "free point" → "polyline"
-  // intent; export can choose to upgrade to smooth via the topology hint).
-  let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
-  for (let i = 1; i < pts.length; i++) {
-    d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`;
-  }
-  if (closed) d += ' Z';
-  path.setAttribute('d', d);
-  path.setAttribute('stroke', color);
-  path.setAttribute('stroke-width', '2.5');
-  path.setAttribute('class', 'trace-polyline' + (live ? ' live' : '') + (closed ? ' closed' : ''));
-  if (groupName) path.dataset.group = groupName;
-  // Always append, then move to position 0 so the polyline is BELOW the
-  // landmark circles in z-order. (renderLandmarks clears the SVG, so we
-  // run AFTER it in render(); prepending relative to the first landmark
-  // would re-insert above them, which is the wrong z-order.)
-  svg.appendChild(path);
-  if (svg.firstChild) svg.insertBefore(path, svg.firstChild);
 }
 
 function renderLandmarks() {
   const svg = $('overlaySvg');
   svg.innerHTML = '';
 
+  const isPreview = isPreviewMode();
+
+  // Onion skin (faded previous frame tracing) — drawn first so it sits behind the current frame
+  if (!isPreview && state.activeFrameIdx > 0) {
+    const prevFrame = state.frames[state.activeFrameIdx - 1];
+    if (prevFrame && prevFrame.landmarks.length > 0) {
+      // 1. Draw faded curves of previous frame
+      if (state.showCurves) {
+        const prevConns = computeConnections(state.activePreset, prevFrame.landmarks);
+        for (const conn of prevConns) {
+          const d = connectionPathD(conn);
+          if (!d) continue;
+          
+          // Draw a thicker dashed line that peeks out from under the active line
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', d);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', conn.color);
+          path.setAttribute('stroke-width', conn.style === 'smooth' ? 4.5 : 3.5); // thicker!
+          path.setAttribute('stroke-linecap', 'round');
+          path.setAttribute('stroke-linejoin', 'round');
+          path.setAttribute('stroke-dasharray', '3 4');
+          path.setAttribute('opacity', state.onionOpacity);
+          path.setAttribute('pointer-events', 'none');
+          svg.appendChild(path);
+        }
+      }
+      // 2. Draw faded points of previous frame
+      if (state.showPoints) {
+        for (const lm of prevFrame.landmarks) {
+          // Draw a small faded filled dot (visible when they don't overlap)
+          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('cx', lm.x); c.setAttribute('cy', lm.y);
+          c.setAttribute('r', 3);
+          c.setAttribute('fill', lm.color);
+          c.setAttribute('stroke', 'none');
+          c.setAttribute('opacity', state.onionOpacity * 0.9);
+          c.setAttribute('pointer-events', 'none');
+          svg.appendChild(c);
+
+          // Draw a larger dashed halo ring (visible even when they overlap perfectly!)
+          const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          halo.setAttribute('cx', lm.x); halo.setAttribute('cy', lm.y);
+          halo.setAttribute('r', 10); // larger than active r=7
+          halo.setAttribute('fill', 'none');
+          halo.setAttribute('stroke', lm.color);
+          halo.setAttribute('stroke-width', '1.2');
+          halo.setAttribute('stroke-dasharray', '2 2'); // dashed ring
+          halo.setAttribute('opacity', Math.min(1.0, state.onionOpacity * 1.2));
+          halo.setAttribute('pointer-events', 'none');
+          svg.appendChild(halo);
+        }
+      }
+    }
+  }
+
   // Connections (curves/lines between landmarks) — drawn first so points
   // render on top. Skipped in Preview mode (too noisy with tiny dots).
-  if (state.showCurves && !isPreviewMode()) {
+  if (state.showCurves && !isPreview) {
     const conns = computeConnections(state.activePreset);
     for (const conn of conns) {
       const d = connectionPathD(conn);
@@ -2867,17 +3448,8 @@ function renderLandmarks() {
   }
 
   // Landmarks
-  const isPreview = state.mode === 'preview';
   const r = isPreview ? 2 : 7;
-  // v1.6: skip landmarks drawn as reference polylines (lower SVG) and
-  // landmarks whose phase is hidden.
-  const refIds = buildReferenceIdSet();
-  const hiddenPhaseIds = new Set(
-    state.phases.filter(p => !p.visible).map(p => p.id)
-  );
   for (const lm of state.landmarks) {
-    if (refIds.has(lm.id)) continue;
-    if (lm.phaseId != null && hiddenPhaseIds.has(lm.phaseId)) continue;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'interactive landmark-group');
     g.dataset.id = lm.id;
@@ -2891,35 +3463,17 @@ function renderLandmarks() {
     if (isPreview) c.setAttribute('opacity', 0.6);
     g.appendChild(c);
 
-    // Label rendering. A landmark is a "trace" point if either:
-    //   - it has the legacy group string "trace", or
-    //   - its name starts with "trace_", or
-    //   - it belongs to a named trace group registered in state.traceGroups
-    //     (e.g. "lv_endocardium" → point "lv_endocardium_3").
-    // Trace points obey the "Trace labels" dropdown:
-    //   - 'off' (default) → no labels (dots only, clean)
-    //   - 'on' → full name (e.g. "lv_endocardium_3")
-    //   - 'numbered' → just the sequence number ("3")
-    const isTrace = lm.group === 'trace' ||
-                    /^trace_\d+$/.test(lm.name) ||
-                    (lm.group && state.traceGroups && state.traceGroups[lm.group]);
+    // Label rendering. Default: skip labels for trace points (clutter-free).
+    // Modes: 'off' = no labels (dots only), 'on' = full name, 'numbered' = 1, 2, 3...
+    const isTrace = lm.group === 'trace' || /^trace_\d+$/.test(lm.name);
     let showThisLabel = state.showLabels && !isPreview;
     let labelText = lm.name;
-    if (isTrace) {
-      if (state.traceLabelMode === 'off') {
-        showThisLabel = false;
-      } else if (state.traceLabelMode === 'numbered') {
-        // Try named-trace sequence first ("lv_endocardium_3" -> "3"),
-        // fall back to legacy "trace_001" -> "1".
-        const m1 = lm.name.match(/_(\d+)$/);
-        if (m1) {
-          labelText = String(parseInt(m1[1], 10));
-        } else {
-          const m2 = lm.name.match(/^trace_(\d+)$/);
-          labelText = m2 ? String(parseInt(m2[1], 10)) : lm.name;
-        }
-      }
-      // 'on' falls through with the full name.
+    if (isTrace && state.traceLabelMode === 'off') {
+      showThisLabel = false;
+    } else if (isTrace && state.traceLabelMode === 'numbered') {
+      // Extract number from name like "trace_001" -> "1"
+      const m = lm.name.match(/^trace_(\d+)$/);
+      labelText = m ? String(parseInt(m[1], 10)) : lm.name;
     }
     if (showThisLabel) {
       const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
@@ -3014,13 +3568,10 @@ function renderStatus() {
     return;
   }
   $('statusLeft').textContent = `${state.naturalW}×${state.naturalH}px · zoom ${(state.scale*100).toFixed(0)}%`;
-  // v1.6: include the active phase in the right-side status line
-  const ph = getActivePhase();
-  const phStr = ph ? ` · phase: <span style="color:${ph.color}">${ph.name}</span> (${ph.pointIds.size} pts)` : '';
   if (state.pxPerCm) {
-    $('statusRight').innerHTML = `<span class="ok">calibrated ${state.pxPerCm.toFixed(2)} px/cm</span> · ${state.landmarks.length} landmarks${phStr}`;
+    $('statusRight').innerHTML = `<span class="ok">calibrated ${state.pxPerCm.toFixed(2)} px/cm</span> · ${state.landmarks.length} landmarks`;
   } else {
-    $('statusRight').innerHTML = `<span class="warn">not calibrated</span> · ${state.landmarks.length} landmarks${phStr}`;
+    $('statusRight').innerHTML = `<span class="warn">not calibrated</span> · ${state.landmarks.length} landmarks`;
   }
 }
 
@@ -3048,34 +3599,6 @@ function setEdgeStatus(state, text) {
 // FIRST-TIME WELCOME — shown after image load, before any preset applied
 // =====================================================================
 const WELCOME_KEY = 'landmarkTool.welcomeDismissed';
-const PHASE_TIP_KEY = 'landmarkTool.phaseTipDismissed';
-
-// v1.6: shown the first time a user adds a second phase. Teaches the
-// "trace once → new phase → previous becomes a faint reference" loop.
-function showPhaseTip() {
-  if (localStorage.getItem(PHASE_TIP_KEY) === '1') return;
-  if (state.phases.length < 2) return;
-  const tip = $('phaseTip');
-  if (!tip) return;
-  tip.innerHTML = `
-    <span class="tip-dismiss" title="Dismiss (won't show again)">×</span>
-    <strong>Multi-phase tracing.</strong> New traces land in the <strong>active</strong> phase (highlighted in the list).
-    The previous phase now shows as a <strong>faint dashed line</strong> as a visual reference.
-    <ul style="margin:6px 0 4px 18px;padding:0;">
-      <li>Click <strong>Set active</strong> on any phase to make new traces go there.</li>
-      <li>Click <strong>○ ref</strong> to hide/show a phase as a reference.</li>
-      <li>Click the phase name to rename (e.g. "Diastole", "Systole").</li>
-      <li>Press <kbd>P</kbd> to add another phase.</li>
-    </ul>
-    All phases are exported in a single JSON — the simulator can iterate <code>phases[]</code> directly.
-  `;
-  tip.style.display = 'block';
-  tip.querySelector('.tip-dismiss').onclick = () => {
-    tip.style.display = 'none';
-    localStorage.setItem(PHASE_TIP_KEY, '1');
-  };
-}
-
 function showWelcomeTip() {
   if (localStorage.getItem(WELCOME_KEY) === '1') return;
   if (state.landmarks.length > 0) return; // already placed something
@@ -3171,6 +3694,71 @@ function screenToImage(clientX, clientY) {
 
 function onMouseDown(e) {
   hideContextMenu();
+  if (state.curveMode && e.button === 0) {
+    const p = screenToImage(e.clientX, e.clientY);
+    const hit = pickCurveHandle(p.x, p.y);
+    if (hit) {
+      // Start dragging this landmark (on ALL frames, to preserve correspondence)
+      state.curveDragId = hit.id;
+      state.selectedId = hit.id;
+      render();
+      return;
+    }
+    // Otherwise: clicking the curve inserts a new point
+    const seg = pickCurveSegment(p.x, p.y);
+    if (seg) {
+      insertCurvePoint(seg, p.x, p.y);
+      return;
+    }
+  }
+  if (state.nodeMode && e.button === 0) {
+    const p = screenToImage(e.clientX, e.clientY);
+    const handle = pickNodeHandle(p.x, p.y);
+    if (handle) {
+      // Shift-click to cycle handle type
+      if (e.shiftKey) {
+        cycleHandleType(handle.lm);
+        render();
+        return;
+      }
+      // CRITICAL FIX: dragging a handle must actually bend the curve. The
+      // curve renderer only honors stored handle positions when handleType
+      // is NOT 'auto' (see connectionPathD, which falls back to Catmull-Rom
+      // for 'auto' types and IGNORES the stored x/y). So a user dragging an
+      // auto handle would see no curve change and no visual follow — the
+      // handle position was being stored but never read. Switching auto→cusp
+      // on drag-start is the standard Inkscape/Illustrator semantic: "drag =
+      // break the smooth relationship and make this a free handle."
+      // If the handle was already non-auto, keep its current type so the
+      // smooth/symmetric/cusp semantics survive the drag.
+      if (!handle.lm.handleType || handle.lm.handleType === 'auto') {
+        // Seed the in/out handles to the current auto positions for the
+        // OPPOSITE side (so cycle to smooth later makes sense), and set
+        // the dragged side to its current auto position so the first drag
+        // delta is a true offset from where the user clicked.
+        seedHandlesFromAuto(handle.lm);
+        handle.lm.handleType = 'cusp';
+      }
+      state.nodeSelectedId = handle.lm.id;
+      state.nodeDragHandle = { id: handle.lm.id, which: handle.which };
+      render();
+      return;
+    }
+    const anchor = pickNodeAnchor(p.x, p.y);
+    if (anchor) {
+      state.nodeSelectedId = anchor.id;
+      state.selectedId = anchor.id;
+      dragState = { kind: 'node-anchor', id: anchor.id, offsetX: p.x - anchor.x, offsetY: p.y - anchor.y };
+      render();
+      return;
+    }
+    const seg = pickCurveSegment(p.x, p.y);
+    if (seg) {
+      insertNodePoint(seg, p.x, p.y);
+      return;
+    }
+  }
+
   if (e.button === 2) return; // right-click handled by contextmenu event
   if (calStep === 1) {
     const p = screenToImage(e.clientX, e.clientY);
@@ -3233,6 +3821,46 @@ function onMouseMove(e) {
   if (state.eraserActive) {
     updateEraserCursorPos(e.clientX, e.clientY);
   }
+  // Curve mode: move the dragged landmark on all frames
+  if (state.curveMode && state.curveDragId != null) {
+    const p = screenToImage(e.clientX, e.clientY);
+    for (const frame of state.frames) {
+      const lm = frame.landmarks.find(l => l.id === state.curveDragId);
+      if (lm) { lm.x = p.x; lm.y = p.y; }
+    }
+    render();
+    return;
+  }
+  // Node tool: drag handles or anchors
+  if (state.nodeMode && state.nodeDragHandle) {
+    const p = screenToImage(e.clientX, e.clientY);
+    const lm = state.landmarks.find(l => l.id === state.nodeDragHandle.id);
+    if (lm) {
+      const h = getNodeHandle(lm, state.nodeDragHandle.which);
+      h.x = p.x - lm.x;
+      h.y = p.y - lm.y;
+      applyHandleConstraints(lm, state.nodeDragHandle.which);
+      render();
+    }
+    return;
+  }
+  if (state.nodeMode && dragState && dragState.kind === 'node-anchor') {
+    // HIGH-severity fix: trace points are frame-local (see addTracePoint),
+    // so moving a node anchor must only mutate the ACTIVE frame's landmark.
+    // The previous loop over state.frames silently moved the same-id landmark
+    // on every other frame, corrupting unrelated traces.
+    const p = screenToImage(e.clientX, e.clientY);
+    const frame = state.frames[state.activeFrameIdx];
+    const lm = frame && frame.landmarks.find(l => l.id === dragState.id);
+    if (lm) {
+      lm.x = p.x - dragState.offsetX;
+      lm.y = p.y - dragState.offsetY;
+    }
+    render();
+    renderList();
+    return;
+  }
+
   if (!dragState) return;
   if (dragState.kind === 'pan') {
     state.panX = dragState.panX + (e.clientX - dragState.startX);
@@ -3242,66 +3870,8 @@ function onMouseMove(e) {
     const p = screenToImage(e.clientX, e.clientY);
     const lm = state.landmarks.find(l => l.id === dragState.id);
     if (lm) {
-      // Default: free move
-      let nx = p.x - dragState.offsetX;
-      let ny = p.y - dragState.offsetY;
-      // Re-snap to nearest edge if the landmark belongs to a named trace
-      // group (so nudging a traced point doesn't drag it off the wall).
-      // We use the local path-tangent snap when the snap mode is "path"
-      // or "radius" — i.e. the user opted into edge snapping — and the
-      // edge map is ready.
-      const tg = state.traceGroups && state.traceGroups[lm.group];
-      if (tg && state.snapEnabled && state.edgeReady &&
-          state.traceSnapMode !== 'off' && state.snapRadius) {
-        // Local tangent = direction from previous member to next member
-        // (using the order in traceGroups.members). If at the ends, use
-        // the single neighbor; if isolated (length 1 group), use the
-        // lookback-style tangent from the prior placed point if any.
-        const idx = tg.members.indexOf(lm.name);
-        const prevName = idx > 0 ? tg.members[idx - 1] : null;
-        const nextName = idx >= 0 && idx < tg.members.length - 1 ? tg.members[idx + 1] : null;
-        const prevLm = prevName ? state.landmarks.find(l => l.name === prevName) : null;
-        const nextLm = nextName ? state.landmarks.find(l => l.name === nextName) : null;
-        const a = prevLm || nextLm;
-        const b = nextLm || prevLm;
-        // Populate a synthetic "tracePreview" so the path-snap helper
-        // computes a sensible tangent for the dragged point.
-        if (a && b && a !== b) {
-          // Two-sided: use midpoint between a and b as the "lookback"
-          // and the dragged point as the "current".
-          const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-          const saved = state.tracePreview;
-          state.tracePreview = [{ x: mx, y: my }, { x: nx, y: ny }];
-          let result;
-          if (state.traceSnapMode === 'path') {
-            result = snapToNearestEdgeAlongPath(nx, ny, state.traceSnapWidth);
-          } else {
-            result = snapToNearestEdge(nx, ny, state.snapRadius);
-          }
-          state.tracePreview = saved;
-          if (result.magnitude > 0) {
-            nx = result.x;
-            ny = result.y;
-          }
-        } else if (a) {
-          // One-sided: tangent along (a -> drag point)
-          const saved = state.tracePreview;
-          state.tracePreview = [{ x: a.x, y: a.y }, { x: nx, y: ny }];
-          let result;
-          if (state.traceSnapMode === 'path') {
-            result = snapToNearestEdgeAlongPath(nx, ny, state.traceSnapWidth);
-          } else {
-            result = snapToNearestEdge(nx, ny, state.snapRadius);
-          }
-          state.tracePreview = saved;
-          if (result.magnitude > 0) {
-            nx = result.x;
-            ny = result.y;
-          }
-        }
-      }
-      lm.x = nx;
-      lm.y = ny;
+      lm.x = p.x - dragState.offsetX;
+      lm.y = p.y - dragState.offsetY;
       if (state.snapToGrid && state.pxPerCm) {
         const gridPx = state.pxPerCm * state.gridSpacing;
         lm.x = Math.round(lm.x / gridPx) * gridPx;
@@ -3333,6 +3903,8 @@ function onMouseMove(e) {
 }
 
 function onMouseUp(e) {
+  if (state.nodeDragHandle) state.nodeDragHandle = null;
+  if (state.curveDragId != null) state.curveDragId = null;
   if (dragState) {
     if (dragState.kind === 'lm') {
       const target = document.querySelector(`.landmark-group[data-id="${dragState.id}"]`);
@@ -3371,139 +3943,32 @@ function onWheel(e) {
 // =====================================================================
 function onContextMenu(e) {
   e.preventDefault();
-  const lmTarget = e.target.closest('.landmark-group');
-  const polyTarget = e.target.closest('.trace-polyline');
-  if (lmTarget) {
-    showContextMenu(e.clientX, e.clientY, parseInt(lmTarget.dataset.id));
-  } else if (polyTarget && !polyTarget.classList.contains('live')) {
-    // Right-click on a named trace polyline → offer to insert a point
-    // on the line at the click position, snapped to the nearest edge
-    // along the line direction.
-    showTraceLineContextMenu(e.clientX, e.clientY, polyTarget.dataset.group);
+  if (state.curveMode) {
+    // Right-click on a handle = delete that landmark
+    const p = screenToImage(e.clientX, e.clientY);
+    const hit = pickCurveHandle(p.x, p.y);
+    if (hit) {
+      deleteLandmark(hit.id);
+      renderAll();
+      return;
+    }
+  }
+  if (state.nodeMode) {
+    // Right-click on an anchor = delete that landmark
+    const p = screenToImage(e.clientX, e.clientY);
+    const anchor = pickNodeAnchor(p.x, p.y);
+    if (anchor) {
+      deleteLandmark(anchor.id);
+      renderAll();
+      return;
+    }
+  }
+  const target = e.target.closest('.landmark-group');
+  if (target) {
+    showContextMenu(e.clientX, e.clientY, parseInt(target.dataset.id));
   } else {
     showContextMenu(e.clientX, e.clientY, null);
   }
-}
-
-function showTraceLineContextMenu(x, y, groupName) {
-  const menu = $('ctxmenu');
-  menu.innerHTML = '';
-  const tg = state.traceGroups[groupName];
-  if (!tg) {
-    // Defensive: if the group is gone (e.g. cleared), fall through
-    showContextMenu(x, y, null);
-    return;
-  }
-  addMenuItem(menu, `➕ Insert point on "${groupName}"`, () => {
-    const p = screenToImage(x, y);
-    insertPointOnTrace(groupName, p.x, p.y);
-  });
-  addMenuItem(menu, `🗑 Delete trace "${groupName}" (${tg.members.length} pts)`, () => {
-    deleteTraceGroup(groupName);
-  }, true);
-  addMenuSep(menu);
-  addMenuItem(menu, `Toggle close "${groupName}"`, () => {
-    tg.closed = !tg.closed;
-    setStatus(`Trace "${groupName}" is now ${tg.closed ? 'closed' : 'open'}.`, 'ok');
-    renderAll();
-  });
-  menu.style.left = x + 'px';
-  menu.style.top = y + 'px';
-  menu.style.display = 'block';
-}
-
-// Insert a new landmark at the click position into the named trace
-// group, preserving order. The new point is placed in `members` between
-// the two existing members whose segment the click is closest to.
-function insertPointOnTrace(groupName, x, y) {
-  const tg = state.traceGroups[groupName];
-  if (!tg) return;
-  // Find the segment (i, i+1) in the trace order that's closest to (x,y).
-  let bestI = 0, bestDist = Infinity;
-  for (let i = 0; i < tg.members.length - 1; i++) {
-    const a = state.landmarks.find(l => l.name === tg.members[i]);
-    const b = state.landmarks.find(l => l.name === tg.members[i + 1]);
-    if (!a || !b) continue;
-    const d = pointToSegmentDistance(x, y, a.x, a.y, b.x, b.y);
-    if (d < bestDist) { bestDist = d; bestI = i; }
-  }
-  // If the trace has <2 members, just append.
-  if (tg.members.length < 2) bestI = tg.members.length - 1;
-  // Apply edge snap if enabled
-  let px = x, py = y;
-  if (state.snapEnabled && state.edgeReady && state.traceSnapMode !== 'off') {
-    // Build a tiny preview with the segment direction so the path-snap
-    // helper computes the right tangent.
-    const a = state.landmarks.find(l => l.name === tg.members[bestI]);
-    const b = tg.members[bestI + 1] ? state.landmarks.find(l => l.name === tg.members[bestI + 1]) : null;
-    const saved = state.tracePreview;
-    if (a && b) {
-      state.tracePreview = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
-    } else if (a) {
-      state.tracePreview = [{ x: a.x, y: a.y }, { x, y }];
-    } else {
-      state.tracePreview = [{ x, y }];
-    }
-    let result;
-    if (state.traceSnapMode === 'path') {
-      result = snapToNearestEdgeAlongPath(x, y, state.traceSnapWidth);
-    } else {
-      result = snapToNearestEdge(x, y, state.snapRadius);
-    }
-    state.tracePreview = saved;
-    if (result.magnitude > 0) {
-      px = result.x;
-      py = result.y;
-    }
-  }
-  // Allocate next sequence number for this group
-  const seq = (state.traceGroupCounter[groupName] != null)
-    ? state.traceGroupCounter[groupName]
-    : (tg.members.length + 1);
-  state.traceGroupCounter[groupName] = seq + 1;
-  const newName = `${groupName}_${seq}`;
-  const lm = {
-    id: state.nextId++,
-    name: newName,
-    type: 'point',
-    x: px, y: py,
-    color: tg.color,
-    group: groupName,
-  };
-  state.landmarks.push(lm);
-  // Insert in the group's member list at bestI+1
-  tg.members.splice(bestI + 1, 0, newName);
-  setStatus(`Inserted ${newName} into trace "${groupName}".`, 'ok');
-  renderAll();
-}
-
-function pointToSegmentDistance(px, py, ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  if (len2 === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-function deleteTraceGroup(groupName) {
-  const tg = state.traceGroups[groupName];
-  if (!tg) return;
-  if (!confirm(`Delete trace "${groupName}" (${tg.members.length} points)?`)) return;
-  const nameSet = new Set(tg.members);
-  state.landmarks = state.landmarks.filter(l => !nameSet.has(l.name));
-  delete state.traceGroups[groupName];
-  // Keep traceGroupCounter entry (so re-tracing the same name continues
-  // numbering from where it left off) but ensure nextId stays past any
-  // removed ids.
-  for (const lm of state.landmarks) {
-    if (lm.id >= state.nextId) state.nextId = lm.id + 1;
-  }
-  if (state.selectedId && !state.landmarks.find(l => l.id === state.selectedId)) {
-    state.selectedId = null;
-  }
-  setStatus(`Deleted trace "${groupName}".`, 'ok');
-  renderAll();
 }
 
 function showContextMenu(x, y, id) {
@@ -3573,6 +4038,11 @@ function onKey(e) {
     state.selectedId = null;
     render();
   }
+  // Esc exits curve mode (and the other tools)
+  if (e.key === 'Escape') {
+    if (state.nodeMode) { setNodeMode(false); e.preventDefault(); return; }
+    if (state.curveMode) { setCurveMode(false); e.preventDefault(); return; }
+  }
   // Ctrl+Z / Cmd+Z: undo last eraser/trace sweep
   if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) {
     if (state.eraserLastSweep && state.eraserLastSweep.length > 0) {
@@ -3583,865 +4053,86 @@ function onKey(e) {
       e.preventDefault();
     }
   }
-  // v1.6: P = new phase (only when not focused on a text input)
-  if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey) {
-    const tag = (document.activeElement && document.activeElement.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    const ph = createPhase(null, PHASE_COLORS[(state.nextPhaseId - 1) % PHASE_COLORS.length]);
-    setActivePhase(ph.id);
-    setStatus(`Created phase "${ph.name}" — now active. New traces will land here.`, 'ok');
-    showPhaseTip();
-    e.preventDefault();
-  }
 }
 
 // =====================================================================
 // EXPORT
 // =====================================================================
-//
-// Two export formats:
-//
-// 1. JSON (machine-readable) — full simulator spec including
-//    source, anatomy, topology, render hints, animation, measurements,
-//    and pathology. Optimized for CLI consumption (Gemini, Claude, etc.).
-//
-// 2. SVG (portable) — embedded image + landmarks, for sharing in
-//    documents or web pages.
-//
-// 3. Preset (configuration) — just the preset definition (no image),
-//    for sharing layouts between users.
-
 function buildExportData() {
-  // Merge user-named trace groups into the topology alongside the static
-  // preset groups. Without this, traced walls are dropped from the export
-  // because they live outside the preset's groups array.
-  const presetGroups = state.presets[state.activePreset]?.groups || [];
-  const traceGroupsExport = Object.entries(state.traceGroups || {}).map(([gname, tg]) => ({
-    id: gname,
-    style: tg.style || 'smooth',
-    closed: !!tg.closed,
-    color: tg.color || '#5fb8ff',
-    members: tg.members || [],
-    source: 'trace',                 // provenance hint for downstream consumers
-    renderAs: tg.style === 'free' ? 'dots-only' : (tg.closed ? 'closed-loop' : 'open-path'),
-  }));
-  const groups = [...presetGroups, ...traceGroupsExport];
-  const structures = inferStructures(groups);
-  const measurements = inferMeasurements(structures);
-  const path = inferPathology();
-  return {
-    tool: 'landmark-tool',
-    version: '1.6',
-    schema: 'simulator-input/v1',  // tells consumers what format this is
+  const numFrames = state.frames.length;
+  const frame0 = state.frames[0];
+  const frame1 = numFrames > 1 ? state.frames[1] : frame0;
 
-    // v1.6: phase metadata (multi-phase tracing). Phases are peer-level
-    // records, NOT nested inside `landmarks` — consumers can read either.
-    // The `phaseId` field on each landmark tells you which phase a point
-    // belongs to (null for non-traced / free landmarks).
-    phases: state.phases.map(p => ({
-      id: p.id,
-      name: p.name,
-      color: p.color,
-      visible: p.visible,
-      asReference: p.asReference,
-      opacity: p.opacity,
-      pointCount: p.pointIds.size,
-      pointIds: Array.from(p.pointIds),
-    })),
-    activePhaseId: state.activePhaseId,
-
-    // Source: where the landmarks came from
-    source: {
-      image: state.imageName || null,
-      imageWidth: state.naturalW,
-      imageHeight: state.naturalH,
-      view: inferView(),
-      phase: 'end-diastole',
-      calibration: state.pxPerCm ? { pxPerCm: +state.pxPerCm.toFixed(2) } : null,
-    },
-
-    // Anatomy: semantic interpretation of the landmarks
-    anatomy: {
-      name: path.name === 'normal' ? `${inferView() || 'Custom'} normal` : `${inferView() || 'Custom'} (${path.name})`,
-      description: path.description,
-      structures: structures,
-      walls: inferWalls(groups, structures),
-    },
-
-    // Topology: how the structures connect (preset groups + user-traced groups)
-    topology: {
-      groups: groups.map(g => ({
-        id: g.id || g.name || `group_${Math.random().toString(36).slice(2,8)}`,
-        style: g.style,        // 'smooth' | 'straight' | 'free'
-        closed: !!g.closed,
-        color: g.color,
-        members: g.members,
-        source: g.source || 'preset',
-        renderAs: g.style === 'free' ? 'dots-only' : (g.closed ? 'closed-loop' : 'open-path'),
-      })),
-    },
-
-    // Rendering hints: visual style
-    renderHints: {
-      background: 'dark',
-      mimicEcho: false,                  // pixelated/textured walls
-      showLabels: true,
-      labelStyle: 'abbreviation',
-      defaultZoom: 1.0,
-      cssTheme: 'dark',
-      dotSize: 7,
-      labelFontSize: 11,
-      curveTension: 0.5,
-    },
-
-    // Animation: whether this is a static frame or part of a cycle
-    animation: {
-      type: 'static',
-      cycleFrames: [],
-    },
-
-    // Measurements: clinical calipers the simulator should support
-    measurements: measurements,
-
-    // Pathology: what variant this represents and what it can be compared to
-    pathology: path,
-
-    // Raw landmark data (for the simulator to use directly)
-    landmarks: state.landmarks.map(l => ({
+  // Format legacy landmarks array for backwards compatibility
+  const legacyLandmarks = frame0.landmarks.map((l, idx) => {
+    const matchB = frame1.landmarks.find(lb => lb.name === l.name) || frame1.landmarks[idx] || l;
+    return {
       id: l.id,
       name: l.name,
-      group: l.group,
-      type: l.type,
-      x: +l.x.toFixed(2),
-      y: +l.y.toFixed(2),
+      type: l.type || 'point',
       color: l.color,
-      phaseId: l.phaseId != null ? l.phaseId : null,   // v1.6
-      x_cm: state.pxPerCm ? +(l.x / state.pxPerCm).toFixed(3) : null,
-      y_cm: state.pxPerCm ? +(l.y / state.pxPerCm).toFixed(3) : null,
-    })),
+      group: l.group || null,
+      x_A: +l.x.toFixed(2),
+      y_A: +l.y.toFixed(2),
+      x_B: +matchB.x.toFixed(2),
+      y_B: +matchB.y.toFixed(2),
+      handleIn_A: l.handleIn || { x: 0, y: 0 },
+      handleOut_A: l.handleOut || { x: 0, y: 0 },
+      handleType_A: l.handleType || 'auto',
+      handleIn_B: matchB.handleIn || { x: 0, y: 0 },
+      handleOut_B: matchB.handleOut || { x: 0, y: 0 },
+      handleType_B: matchB.handleType || 'auto',
+    };
+  });
 
+  // Format new multi-frame sequence structure
+  const exportFrames = state.frames.map((frame, idx) => {
+    return {
+      frameIndex: idx,
+      image: {
+        name: frame.imageName || '',
+        width: frame.naturalW || 0,
+        height: frame.naturalH || 0,
+      },
+      landmarks: frame.landmarks.map(l => ({
+        id: l.id,
+        name: l.name,
+        type: l.type || 'point',
+        color: l.color,
+        group: l.group || null,
+        x: +l.x.toFixed(2),
+        y: +l.y.toFixed(2),
+        handleIn: l.handleIn || { x: 0, y: 0 },
+        handleOut: l.handleOut || { x: 0, y: 0 },
+        handleType: l.handleType || 'auto',
+      })),
+    };
+  });
+
+  return {
+    tool: 'landmark-tool',
+    version: '3.0-sequence',
+    imageA: {
+      name: frame0.imageName || '',
+      width: frame0.naturalW || 0,
+      height: frame0.naturalH || 0,
+    },
+    imageB: {
+      name: frame1.imageName || '',
+      width: frame1.naturalW || 0,
+      height: frame1.naturalH || 0,
+    },
+    calibration: state.pxPerCm ? { pxPerCm: state.pxPerCm } : null,
+    landmarks: legacyLandmarks, // Backwards compatible with 2.0-morph
+    frames: exportFrames,       // Multi-frame sequence
     exportedAt: new Date().toISOString(),
   };
 }
 
-// Infer the view name from the active preset (PLAX, PSAX, A4C, etc.)
-function inferView() {
-  const name = (state.activePreset || '').toLowerCase();
-  if (name.includes('plax')) return 'PLAX';
-  if (name.includes('psax')) return 'PSAX';
-  if (name.includes('a4c')) return 'A4C';
-  if (name.includes('a2c')) return 'A2C';
-  if (name.includes('subcostal')) return 'Subcostal';
-  if (name.includes('cxr')) return 'CXR';
-  if (name.includes('ct')) return 'CT';
-  return null;
-}
-
-// Infer anatomical structures from the topology groups. Each group
-// becomes a structure with render hints based on its name/type.
-function inferStructures(groups) {
-  if (!groups || groups.length === 0) return [];
-  const out = [];
-  for (const g of groups) {
-    const id = g.id || g.name || 'group';
-    // Use word boundaries for matching so 'valve' doesn't match 'lv' etc.
-    const lc = (' ' + id.toLowerCase() + ' ').replace(/[_-]/g, ' ');
-    const has = (kw) => lc.includes(' ' + kw + ' ') || lc.includes(kw + '_') || lc.includes('_' + kw);
-    let type = 'reference';
-    let renderOrder = 4;
-    let interiorColor = '#0a0a12';
-    let motion = null;
-    // Check valves FIRST so they don't get classified as chambers
-    if (has('valve') || has('mitral') || has('mv') || has('av') || has('tricuspid') || has('tv') || has('pv')) {
-      type = 'valve';
-      renderOrder = 5;
-      motion = has('mitral') || has('mv') || has('tricuspid') || has('tv')
-        ? 'closed-in-systole, open-in-diastole'
-        : 'open-in-systole, closed-in-diastole';
-    } else if (has('lv') || has('left_ventricle') || has('ventricle')) {
-      type = 'chamber';
-      renderOrder = 2;
-      interiorColor = '#1a0a1f';
-    } else if (has('la') || has('atrium') || has('left_atrium') || has('right_atrium')) {
-      type = 'chamber';
-      renderOrder = 2;
-      interiorColor = '#1a0a1f';
-    } else if (has('rvot') || has('rv') || has('right_ventricle')) {
-      type = 'chamber';
-      renderOrder = 2;
-      interiorColor = '#1a0a1f';
-    } else if (has('aortic') || has('ao_')) {
-      type = 'vessel';
-      renderOrder = 3;
-      interiorColor = '#1a0a1f';
-    } else if (has('pericardium')) {
-      type = 'reference';
-      renderOrder = 1;
-    }
-    out.push({
-      id,
-      name: humanizeName(id),
-      type,
-      color: g.color,
-      interiorColor,
-      renderOrder,
-      memberCount: g.members.length,
-      motion,
-    });
-  }
-  return out;
-}
-
-// Infer walls (anatomical structures with thickness)
-function inferWalls(groups, structures) {
-  if (!groups) return [];
-  const walls = [];
-  for (const g of groups) {
-    const id = g.id || g.name || '';
-    const lc = id.toLowerCase();
-    if (lc.includes('lv') || lc.includes('septum') || lc.includes('posterior_wall') || lc.includes('wall')) {
-      walls.push({
-        name: humanizeName(id),
-        members: g.members,
-        type: 'soft-tissue',
-        thickness: '~1 cm normal adult',
-        renderOrder: 3,
-      });
-    }
-  }
-  return walls;
-}
-
-// Infer standard clinical measurements from the available structures
-function inferMeasurements(structures) {
-  const out = [];
-  const hasLV = structures.some(s => /lv|left.ventricle/i.test(s.id));
-  const hasMV = structures.some(s => /mv|mitral/i.test(s.id));
-  const hasAV = structures.some(s => /av|aortic.valve/i.test(s.id));
-  if (hasLV) {
-    out.push({
-      name: 'LVIDd',
-      fullName: 'Left Ventricular Internal Diameter at end-Diastole',
-      from: 'septum_basal',
-      to: 'posterior_wall_basal',
-      expected: '4.0-5.6 cm (normal adult)',
-      clinicalSignificance: 'Increased in dilated cardiomyopathy. Decreased in HOCM.',
-    });
-    out.push({
-      name: 'IVSd',
-      fullName: 'Interventricular Septal thickness at end-Diastole',
-      from: 'lv_cavity_septum_inner',
-      to: 'septum_basal',
-      expected: '0.7-1.1 cm (normal adult)',
-      clinicalSignificance: 'Increased in HOCM, hypertensive heart disease.',
-    });
-    out.push({
-      name: 'LVPWd',
-      fullName: 'Left Ventricular Posterior Wall thickness at end-Diastole',
-      from: 'lv_cavity_wall_inner',
-      to: 'posterior_wall_basal',
-      expected: '0.7-1.1 cm (normal adult)',
-      clinicalSignificance: 'Increased in concentric hypertrophy.',
-    });
-  }
-  if (hasAV) {
-    out.push({
-      name: 'AV area',
-      fullName: 'Aortic Valve area (planimetered)',
-      from: null,
-      to: null,
-      expected: '2.5-4.0 cm² (normal adult)',
-      clinicalSignificance: '<1.0 cm² indicates severe aortic stenosis.',
-    });
-  }
-  if (hasMV) {
-    out.push({
-      name: 'MV E-point',
-      fullName: 'Mitral Valve E-point septal separation (EPSS)',
-      from: 'mv_anterior_leaflet_tip',
-      to: 'septum_basal',
-      expected: '<7 mm (normal)',
-      clinicalSignificance: 'Increased in LV dysfunction.',
-    });
-  }
-  return out;
-}
-
-// Infer pathology from preset name and any tags
-function inferPathology() {
-  const name = (state.activePreset || '').toLowerCase();
-  if (name.includes('normal')) {
-    return {
-      name: 'normal',
-      description: 'Normal anatomical reference',
-      comparisons: [],
-    };
-  }
-  if (name.includes('hocm') || name.includes('hypertrophic')) {
-    return {
-      name: 'HOCM',
-      description: 'Hypertrophic Obstructive Cardiomyopathy — asymmetric septal hypertrophy',
-      comparisons: [],
-    };
-  }
-  if (name.includes('dilated') || name.includes('dcm')) {
-    return {
-      name: 'dilated',
-      description: 'Dilated cardiomyopathy — enlarged LV, thin walls',
-      comparisons: [],
-    };
-  }
-  if (name.includes('as') || name.includes('aortic_stenosis')) {
-    return {
-      name: 'AS',
-      description: 'Aortic stenosis — thickened AV leaflets, restricted motion',
-      comparisons: [],
-    };
-  }
-  if (name.includes('effusion') || name.includes('pe')) {
-    return {
-      name: 'effusion',
-      description: 'Pericardial effusion — fluid in pericardial space',
-      comparisons: [],
-    };
-  }
-  return {
-    name: 'custom',
-    description: 'User-defined anatomy',
-    comparisons: [],
-  };
-}
-
-// Convert snake_case to Title Case
-function humanizeName(s) {
-  if (!s) return '';
-  return s.split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
 function exportJSON() {
   const data = buildExportData();
-  const fname = `${state.imageName || 'landmarks'}.simulator-spec.json`;
-  download(JSON.stringify(data, null, 2), fname, 'application/json');
-  setStatus(`Exported simulator spec to ${fname} (${data.landmarks.length} landmarks, ${data.anatomy.structures.length} structures, ${data.measurements.length} measurements).`, 'ok');
-}
-
-// Build a ready-to-paste prompt for a CLI (Gemini, Claude, etc.) to
-// generate a clinical simulator from the spec. The prompt is fully
-// generic — it adapts to whatever is in the spec (echo, CXR, CT,
-// chart, photo, diagram) without assuming echo conventions.
-//
-// The prompt includes:
-//   - Context inferred from the spec
-//   - Embedded JSON spec
-//   - Required features (rendering, interaction, calipers if applicable)
-//   - Verification checklist
-function buildSimPrompt() {
-  const data = buildExportData();
-  const json = JSON.stringify(data, null, 2);
-  const ctx = inferPromptContext(data);
-  // DEBUG
-  if (window.__debugSimPrompt) {
-    console.log('[buildSimPrompt] activePreset:', state.activePreset, 'ctx.isMedical:', ctx.isMedical, 'groupIds:', data.topology.groups.map(g => g.id), 'landmarkNames:', data.landmarks.map(l => l.name));
-  }
-  return `# Build a clinical simulator from this spec
-
-## What this is
-
-A ${ctx.isMedical ? 'clinical teaching' : 'visualization'} simulator for **${data.anatomy.name}**.
-${ctx.audienceLine}
-${ctx.cycleLine}
-
-## Output format
-
-A **single self-contained HTML file** with embedded CSS and JavaScript.
-No frameworks, no build step, no external dependencies. Should run by double-clicking.
-Follow the same architectural pattern as the existing landmark tool at
-https://github.com/sunilchhajwani/landmark-tool:
-- Single HTML file
-- Vanilla JS, no frameworks
-- state object holds all mutable state
-- render functions for canvas, sidebar, status
-- Event handlers delegate based on mode
-
-## Source data (read this carefully)
-
-The spec below describes the anatomy/structures, their topology (how they connect),
-rendering hints, measurements the simulator should support, and any clinical context.
-
-\`\`\`json
-${json}
-\`\`\`
-
-## Context inferred from the spec
-
-${ctx.contextBlock}
-
-## Required features
-
-1. **Render the structures** as a 2D canvas/SVG using the landmark coordinates:
-   - ${data.anatomy.structures.length} structures defined in \`anatomy.structures\`
-   - Use the topology from \`topology.groups\` — smooth curves (Catmull-Rom) for organic walls, straight lines for rigid structures, dots only for free reference points
-   - Apply render order from \`anatomy.structures[].renderOrder\` (background → chambers → walls → valves)
-   - Use \`interiorColor\` from each chamber structure for the fill
-
-2. **Labels** following \`renderHints.labelStyle\`:
-   - Match colors to \`topology.groups[].color\`
-   - Position labels outside the structure, with paint-order: stroke for readability
-   - ${ctx.labelHint}
-
-${ctx.measurementBlock}
-${ctx.animationBlock}
-${ctx.pathologyBlock}
-
-## Dark theme
-
-Background: \`#050507\`. Text: \`#c8c8ce\`. Accents: use the structure colors from the spec.
-
-## Verification checklist
-
-Before declaring done, verify:
-- [ ] All ${data.landmarks.length} landmarks render at the correct positions
-- [ ] ${data.anatomy.structures.length} structures visually distinguishable
-${ctx.checklist}
-- [ ] No console errors when opened
-- [ ] Dark theme matches spec
-- [ ] Works offline (no external requests)
-- [ ] File size under 100KB
-
-## Notes for the LLM
-
-- ${data.anatomy.structures.length} structures is a lot — render them in z-order, not in declaration order
-- Use Catmull-Rom math for smooth curves (algorithm: for each segment, compute tangent from previous and next point, convert to cubic Bézier)
-- Don't fabricate image content from scratch — use the landmark coordinates as ground truth
-- ${ctx.clarityHint}
-
-## Testing
-
-Open the HTML file in Chrome/Firefox/Safari. Test the caliper feature by clicking two related landmarks. Verify measurements match the expected ranges in \`measurements\`.
-`;
-}
-
-// Infer context from the spec to build a view-agnostic prompt.
-// Returns sections that adapt to the content (echo, CXR, CT, chart, etc.)
-function inferPromptContext(data) {
-  const structures = data.anatomy.structures || [];
-  const measurements = data.measurements || [];
-  const landmarkNames = (data.landmarks || []).map(l => l.name);
-  const groupIds = (data.topology?.groups || []).map(g => (g.id || '').toLowerCase());
-
-  // Detect if this is medical (echo, CXR, CT, etc.) vs generic (chart, photo, diagram)
-  // Use word-boundary matching so 'la' doesn't match 'range' or 'lavender',
-  // and 'ra' doesn't match 'range' or 'tray'.
-  const medicalKeywords = ['lv', 'rv', 'la', 'ra', 'mv', 'av', 'tv', 'pv', 'aortic', 'mitral',
-                           'tricuspid', 'pulmonic', 'septum', 'pericardium', 'effusion',
-                           'plax', 'psax', 'a4c', 'a2c', 'cxr', 'echo', 'valve', 'atrium',
-                           'ventricle', 'heart', 'lung', 'thorax', 'chest', 'abdomen',
-                           'brain', 'skull', 'cistern'];
-  function hasMedicalMatch(text) {
-    // Normalize: replace underscores/hyphens with spaces, pad with spaces,
-    // then check if any keyword appears as a whole word.
-    const t = ' ' + String(text).toLowerCase().replace(/[_-]/g, ' ').replace(/[^a-z0-9 ]/g, ' ') + ' ';
-    return medicalKeywords.some(k => t.includes(' ' + k + ' '));
-  }
-  const isMedical = landmarkNames.some(n => hasMedicalMatch(n))
-                    || groupIds.some(g => hasMedicalMatch(g));
-
-  // Detect cycle/animation needs
-  const hasCycle = data.animation?.type === 'cycle'
-                   || (data.animation?.cycleFrames || []).length > 0
-                   || groupIds.some(g => g.includes('systole') || g.includes('diastole'));
-
-  // Detect pathology
-  const hasPathology = data.pathology?.name && data.pathology.name !== 'normal' && data.pathology.name !== 'custom';
-
-  // Build context block
-  let contextBlock = '';
-  if (isMedical) {
-    contextBlock = `This appears to be a **medical imaging** simulator (echo/CXR/CT/etc.).
-The landmarks represent anatomical structures; the topology defines how they connect.
-The measurements list provides clinical calipers with expected ranges and clinical significance.`;
-  } else {
-    contextBlock = `This is a **generic landmark-based visualization** — no medical domain assumptions.
-The landmarks are user-defined points on an image; the topology describes how they connect.
-The user is using this for ${inferGenericUseCase(data)} purposes.`;
-  }
-
-  // Build measurement block
-  let measurementBlock = '';
-  if (measurements.length > 0) {
-    const caliperTypes = detectCaliperTypes(measurements);
-    measurementBlock = `3. **Interactive calipers** for each measurement in \`measurements\`:
-   - User clicks two landmarks → ${caliperTypes.description}
-   - Show the expected value from \`measurements[].expected\` (e.g., "4.0-5.6 cm")
-   ${caliperTypes.showSignificance ? '- Show clinical significance from `measurements[].clinicalSignificance` on hover' : ''}
-   - Specifically support: ${measurements.map(m => '`' + m.name + '`').join(', ')}`;
-  } else {
-    measurementBlock = `3. **No calipers needed** — this spec doesn't define measurements.
-   - Don't add measurement features; just render the landmarks and topology`;
-  }
-
-  // Build animation block
-  let animationBlock = '';
-  if (hasCycle) {
-    animationBlock = `4. **Cycle animation**:
-   - The spec implies a time-varying anatomy (e.g., cardiac cycle)
-   - For each structure with motion, animate its shape/position over a cycle
-   - Use interpolation between keyframes (diastole ↔ systole)
-   - Provide a play/pause control and a timeline scrubber
-   - Sync animation to a virtual ECG (if medical context)`;
-  } else {
-    animationBlock = `4. **No animation** — this is a static anatomy view.
-   - Don't add animation controls; render the static topology`;
-  }
-
-  // Build pathology block
-  let pathologyBlock = '';
-  if (hasPathology) {
-    pathologyBlock = `5. **Pathology emphasis**:
-   - This represents **${data.pathology.name}** (${data.pathology.description || ''})
-   - Highlight the structures that are abnormal (e.g., thickened walls, enlarged chambers)
-   - Include a toggle to switch between normal and this pathology for comparison
-   - If \`pathology.comparisons\` has entries, support loading them as alternate states`;
-  } else {
-    pathologyBlock = `5. **No pathology** — this is a normal/standard anatomy or non-medical content.`;
-  }
-
-  // Label hint based on context
-  let labelHint;
-  if (isMedical) {
-    labelHint = 'Use standard anatomical abbreviations if recognizable (e.g., "LV", "MV", "AV")';
-  } else {
-    labelHint = 'Use the landmark names as given — they are user-defined, possibly semantic';
-  }
-
-  // Audience line
-  const audienceLine = isMedical
-    ? 'Target audience: **postgraduate medical residents and intensivists** learning to interpret this view.'
-    : 'Target audience: end-user is the spec author and their collaborators.';
-
-  // Cycle line
-  const cycleLine = hasCycle
-    ? 'The spec implies a cycle (systole/diastole or similar) — render should support showing the cycle.'
-    : 'Single static view — no cycle animation needed unless explicitly added.';
-
-  // Clarity hint
-  const clarityHint = isMedical
-    ? 'The simulator is for **clinical teaching**, so prioritize clarity over realism. Use clinical conventions.'
-    : 'The simulator is for **visualization and interaction**, so prioritize clarity and responsiveness.';
-
-  // Checklist additions
-  let checklist = '';
-  if (measurements.length > 0) {
-    checklist = `- [ ] Calipers work for the ${measurements.length} defined measurements\n${measurements.map(m => `- [ ] \`${m.name}\` measurement displays correctly`).join('\n')}\n`;
-  }
-  if (hasCycle) {
-    checklist += `- [ ] Cycle animation runs smoothly (no jank)\n- [ ] Play/pause/scrub controls work\n`;
-  }
-  if (hasPathology) {
-    checklist += `- [ ] Pathology state visually distinct from normal\n- [ ] Comparison toggle works\n`;
-  }
-
-  return {
-    isMedical,
-    contextBlock,
-    measurementBlock,
-    animationBlock,
-    pathologyBlock,
-    labelHint,
-    audienceLine,
-    cycleLine,
-    clarityHint,
-    checklist,
-  };
-}
-
-// Detect what kind of calipers the measurements describe
-function detectCaliperTypes(measurements) {
-  const text = measurements.map(m => (m.name + ' ' + (m.fullName || '')).toLowerCase()).join(' ');
-  const hasArea = text.includes('area');
-  const hasDiameter = text.includes('diameter') || text.includes('lvid') || text.includes('ivs') || text.includes('lvpw');
-  const hasDistance = hasDiameter || text.includes('separation') || text.includes('epss') || text.includes('distance');
-  const showSignificance = measurements.some(m => m.clinicalSignificance);
-
-  let description;
-  if (hasArea && hasDistance) {
-    description = 'show distance or area depending on which landmarks are selected';
-  } else if (hasArea) {
-    description = 'show the enclosed area';
-  } else {
-    description = 'show the distance';
-  }
-
-  return { description, showSignificance };
-}
-
-// Infer a generic use case when the spec is not medical
-function inferGenericUseCase(data) {
-  const structures = (data.anatomy?.structures || []).map(s => (s.id || '').toLowerCase());
-  const landmarkNames = (data.landmarks || []).map(l => (l.name || '').toLowerCase());
-  const allText = (structures.join(' ') + ' ' + landmarkNames.join(' ')).toLowerCase();
-
-  if (allText.includes('chart') || allText.includes('axis') || allText.includes('graph') || allText.includes('plot')) {
-    return 'chart/graph annotation';
-  }
-  if (allText.includes('photo') || allText.includes('face') || allText.includes('eye') || allText.includes('body')) {
-    return 'photo annotation';
-  }
-  if (allText.includes('diagram') || allText.includes('flow') || allText.includes('node')) {
-    return 'diagram annotation';
-  }
-  if (allText.includes('blueprint') || allText.includes('floor') || allText.includes('plan')) {
-    return 'architectural plan annotation';
-  }
-  return 'general image annotation';
-}
-
-// Generate a sample prompt for a synthetic non-echo case. Used to
-// verify the prompt builder is fully generic without needing real images.
-// Pass a case id: 'chart', 'photo', 'diagram', 'plan', or 'empty'.
-function buildSampleSimPrompt(caseId) {
-  // Save current state
-  const saved = {
-    landmarks: state.landmarks,
-    activePreset: state.activePreset,
-    presets: state.presets,
-    imageName: state.imageName,
-    naturalW: state.naturalW,
-    naturalH: state.naturalH,
-    pxPerCm: state.pxPerCm,
-  };
-
-  // Build synthetic data
-  let sampleLandmarks, samplePresets, sampleImage, sampleW, sampleH, sampleCalib, sampleMeasurements;
-
-  if (caseId === 'chart') {
-    sampleImage = 'blood_glucose_chart.png';
-    sampleW = 800; sampleH = 500;
-    sampleLandmarks = [
-      { id: 1, name: 'peak_breakfast',  group: 'glucose_peaks', color: '#ff7faa', x: 150, y: 150 },
-      { id: 2, name: 'peak_lunch',      group: 'glucose_peaks', color: '#ff7faa', x: 400, y: 120 },
-      { id: 3, name: 'peak_dinner',     group: 'glucose_peaks', color: '#ff7faa', x: 650, y: 160 },
-      { id: 4, name: 'trough_pre_lunch',group: 'glucose_troughs', color: '#5fb8ff', x: 280, y: 280 },
-      { id: 5, name: 'trough_pre_dinner',group: 'glucose_troughs', color: '#5fb8ff', x: 530, y: 290 },
-      { id: 6, name: 'baseline_axis',   group: 'reference', color: '#8a8a92', x: 100, y: 400 },
-      { id: 7, name: 'target_range_low',group: 'reference', color: '#5fd178', x: 100, y: 220 },
-      { id: 8, name: 'target_range_high',group: 'reference', color: '#5fd178', x: 100, y: 180 },
-    ];
-    samplePresets = {
-      '__sample_chart__': {
-        name: 'Sample Chart',
-        groups: [
-          { id: 'glucose_peaks', style: 'free', closed: false, color: '#ff7faa', members: ['peak_breakfast', 'peak_lunch', 'peak_dinner'] },
-          { id: 'glucose_troughs', style: 'free', closed: false, color: '#5fb8ff', members: ['trough_pre_lunch', 'trough_pre_dinner'] },
-          { id: 'reference', style: 'free', closed: false, color: '#8a8a92', members: ['baseline_axis', 'target_range_low', 'target_range_high'] },
-        ],
-        landmarks: sampleLandmarks,
-      }
-    };
-    sampleMeasurements = []; // user didn't define any
-  } else if (caseId === 'photo') {
-    sampleImage = 'portrait.jpg';
-    sampleW = 600; sampleH = 800;
-    sampleLandmarks = [
-      { id: 1, name: 'left_eye_outer',  group: 'eyes', color: '#5fb8ff', x: 200, y: 320 },
-      { id: 2, name: 'left_eye_inner',  group: 'eyes', color: '#5fb8ff', x: 250, y: 320 },
-      { id: 3, name: 'right_eye_inner', group: 'eyes', color: '#5fb8ff', x: 350, y: 320 },
-      { id: 4, name: 'right_eye_outer', group: 'eyes', color: '#5fb8ff', x: 400, y: 320 },
-      { id: 5, name: 'nose_tip',        group: 'nose', color: '#5fd178', x: 300, y: 420 },
-      { id: 6, name: 'mouth_left',      group: 'mouth', color: '#ff7faa', x: 240, y: 520 },
-      { id: 7, name: 'mouth_center',    group: 'mouth', color: '#ff7faa', x: 300, y: 540 },
-      { id: 8, name: 'mouth_right',     group: 'mouth', color: '#ff7faa', x: 360, y: 520 },
-      { id: 9, name: 'chin',            group: 'face', color: '#ffd45f', x: 300, y: 640 },
-    ];
-    samplePresets = {
-      '__sample_photo__': {
-        name: 'Sample Photo',
-        groups: [
-          { id: 'eyes', style: 'straight', closed: false, color: '#5fb8ff', members: ['left_eye_outer', 'left_eye_inner', 'right_eye_inner', 'right_eye_outer'] },
-          { id: 'nose', style: 'free', closed: false, color: '#5fd178', members: ['nose_tip'] },
-          { id: 'mouth', style: 'smooth', closed: false, color: '#ff7faa', members: ['mouth_left', 'mouth_center', 'mouth_right'] },
-          { id: 'face', style: 'free', closed: false, color: '#ffd45f', members: ['chin'] },
-        ],
-        landmarks: sampleLandmarks,
-      }
-    };
-    sampleMeasurements = [];
-  } else if (caseId === 'diagram') {
-    sampleImage = 'flow_chart.png';
-    sampleW = 700; sampleH = 500;
-    sampleLandmarks = [
-      { id: 1, name: 'input_node',  group: 'flow', color: '#5fd178', x: 100, y: 100 },
-      { id: 2, name: 'process_a',   group: 'flow', color: '#5fb8ff', x: 300, y: 100 },
-      { id: 3, name: 'decision',    group: 'flow', color: '#ffd45f', x: 500, y: 100 },
-      { id: 4, name: 'output_pass', group: 'flow', color: '#5fd178', x: 600, y: 50 },
-      { id: 5, name: 'output_fail', group: 'flow', color: '#ff5f5f', x: 600, y: 200 },
-      { id: 6, name: 'process_b',   group: 'flow', color: '#5fb8ff', x: 300, y: 300 },
-      { id: 7, name: 'process_c',   group: 'flow', color: '#5fb8ff', x: 500, y: 300 },
-    ];
-    samplePresets = {
-      '__sample_diagram__': {
-        name: 'Sample Diagram',
-        groups: [
-          { id: 'flow', style: 'straight', closed: false, color: '#5fb8ff', members: ['input_node', 'process_a', 'decision', 'output_pass', 'output_fail', 'process_b', 'process_c'] },
-        ],
-        landmarks: sampleLandmarks,
-      }
-    };
-    sampleMeasurements = [];
-  } else if (caseId === 'plan') {
-    sampleImage = 'floor_plan.png';
-    sampleW = 1000; sampleH = 700;
-    sampleLandmarks = [
-      { id: 1, name: 'living_room',  group: 'rooms', color: '#5fd178', x: 250, y: 250 },
-      { id: 2, name: 'kitchen',      group: 'rooms', color: '#5fd178', x: 500, y: 250 },
-      { id: 3, name: 'bedroom',      group: 'rooms', color: '#5fd178', x: 750, y: 250 },
-      { id: 4, name: 'bathroom',     group: 'rooms', color: '#5fd178', x: 750, y: 500 },
-      { id: 5, name: 'door_main',    group: 'doors', color: '#5fb8ff', x: 100, y: 250 },
-      { id: 6, name: 'door_bedroom', group: 'doors', color: '#5fb8ff', x: 625, y: 250 },
-      { id: 7, name: 'window_north', group: 'windows', color: '#ffd45f', x: 250, y: 100 },
-      { id: 8, name: 'window_east',  group: 'windows', color: '#ffd45f', x: 900, y: 250 },
-    ];
-    samplePresets = {
-      '__sample_plan__': {
-        name: 'Sample Floor Plan',
-        groups: [
-          { id: 'rooms', style: 'free', closed: false, color: '#5fd178', members: ['living_room', 'kitchen', 'bedroom', 'bathroom'] },
-          { id: 'doors', style: 'straight', closed: false, color: '#5fb8ff', members: ['door_main', 'door_bedroom'] },
-          { id: 'windows', style: 'free', closed: false, color: '#ffd45f', members: ['window_north', 'window_east'] },
-        ],
-        landmarks: sampleLandmarks,
-      }
-    };
-    sampleMeasurements = [];
-  } else if (caseId === 'empty') {
-    sampleImage = null;
-    sampleW = 0; sampleH = 0;
-    sampleLandmarks = [];
-    samplePresets = {};
-    sampleMeasurements = [];
-  }
-
-  // Temporarily swap state
-  state.landmarks = sampleLandmarks;
-  state.activePreset = samplePresets ? Object.keys(samplePresets)[0] : null;
-  state.presets = samplePresets || {};
-  state.imageName = sampleImage;
-  state.naturalW = sampleW;
-  state.naturalH = sampleH;
-  state.pxPerCm = null;
-
-  const prompt = buildSimPrompt();
-
-  // Restore state
-  state.landmarks = saved.landmarks;
-  state.activePreset = saved.activePreset;
-  state.presets = saved.presets;
-  state.imageName = saved.imageName;
-  state.naturalW = saved.naturalW;
-  state.naturalH = saved.naturalH;
-  state.pxPerCm = saved.pxPerCm;
-
-  return prompt;
-}
-
-function copySimPrompt() {
-  const prompt = buildSimPrompt();
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(prompt).then(
-      () => setStatus('Sim prompt copied to clipboard. Paste into Gemini/Claude CLI.', 'ok'),
-      () => fallbackDownload(prompt)
-    );
-  } else {
-    fallbackDownload(prompt);
-  }
-}
-
-function fallbackDownload(prompt) {
-  const fname = `${state.imageName || 'landmarks'}.sim-prompt.md`;
-  download(prompt, fname, 'text/markdown');
-  setStatus(`Clipboard not available — downloaded ${fname} instead.`, 'warn');
-}
-
-function downloadSimPrompt() {
-  const prompt = buildSimPrompt();
-  const fname = `${state.imageName || 'landmarks'}.sim-prompt.md`;
-  download(prompt, fname, 'text/markdown');
-  setStatus(`Downloaded simulator prompt to ${fname}.`, 'ok');
-}
-
-function showSamplePrompt() {
-  const caseId = $('sampleTestSel').value;
-  if (!caseId) {
-    setStatus('Pick a test case from the dropdown first.', 'warn');
-    return;
-  }
-  const prompt = buildSampleSimPrompt(caseId);
-  // Show in a modal-like overlay
-  const modal = document.createElement('div');
-  modal.id = 'sampleModal';
-  modal.style.cssText = `
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.85); z-index: 1000;
-    display: flex; align-items: center; justify-content: center;
-    padding: 20px;
-  `;
-  modal.innerHTML = `
-    <div style="background: #0a0a12; border: 1px solid #2a2a30; border-radius: 6px;
-                width: 90%; max-width: 1100px; max-height: 90vh;
-                display: flex; flex-direction: column;">
-      <div style="padding: 12px 16px; border-bottom: 1px solid #2a2a30;
-                  display: flex; justify-content: space-between; align-items: center;">
-        <div style="color: #f5f5f5; font-weight: 600;">Sample prompt: ${caseId}</div>
-        <button id="closeSampleModal" style="background: #c44; color: white; border: none;
-                  padding: 6px 12px; border-radius: 4px; cursor: pointer;">Close</button>
-      </div>
-      <pre id="sampleModalContent" style="margin: 0; padding: 16px; overflow: auto;
-                  color: #c8c8ce; font-family: ui-monospace, monospace; font-size: 11px;
-                  line-height: 1.4; white-space: pre-wrap; word-wrap: break-word;
-                  flex: 1; min-height: 0;">${escapeHtml(prompt)}</pre>
-      <div style="padding: 12px 16px; border-top: 1px solid #2a2a30;
-                  display: flex; gap: 8px;">
-        <button id="copySampleModal" style="background: #2c5cff; color: white; border: none;
-                  padding: 6px 12px; border-radius: 4px; cursor: pointer;">Copy to clipboard</button>
-        <button id="downloadSampleModal" style="background: #5fd178; color: black; border: none;
-                  padding: 6px 12px; border-radius: 4px; cursor: pointer;">Download .md</button>
-        <div style="color: #8a8a92; font-size: 11px; align-self: center; margin-left: 12px;">
-          This is a synthetic sample — actual content is your real spec.
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  document.getElementById('closeSampleModal').onclick = () => modal.remove();
-  document.getElementById('copySampleModal').onclick = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(prompt).then(
-        () => setStatus('Sample prompt copied to clipboard.', 'ok'),
-        () => setStatus('Clipboard not available — use Download instead.', 'warn')
-      );
-    }
-  };
-  document.getElementById('downloadSampleModal').onclick = () => {
-    download(prompt, `sample-${caseId}-prompt.md`, 'text/markdown');
-    setStatus(`Downloaded sample-${caseId}-prompt.md`, 'ok');
-  };
-  // Close on Escape
-  const escHandler = (e) => {
-    if (e.key === 'Escape') {
-      modal.remove();
-      document.removeEventListener('keydown', escHandler);
-    }
-  };
-  document.addEventListener('keydown', escHandler);
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  download(JSON.stringify(data, null, 2), `${state.imageName || 'landmarks'}.landmarks.json`, 'application/json');
+  setStatus(`Exported ${data.landmarks.length} landmarks to JSON.`, 'ok');
 }
 
 function exportSVG() {
@@ -4452,18 +4143,9 @@ function exportSVG() {
   parts.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   // Embedded image
   parts.push(`  <image x="0" y="0" width="${w}" height="${h}" xlink:href="${state.imageDataUrl}"/>`);
-  // v1.6: reference phases as faint dashed polylines (below landmarks)
-  for (const ph of getReferencePhases()) {
-    const pts = state.landmarks.filter(l => ph.pointIds.has(l.id));
-    pts.sort((a, b) => a.id - b.id);
-    if (pts.length < 2) continue;
-    const d = pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-    parts.push(`  <polyline class="phase-reference" data-phase-id="${ph.id}" data-phase-name="${escapeXml(ph.name)}" points="${d}" fill="none" stroke="${ph.color}" stroke-width="1.5" stroke-dasharray="4 3" opacity="${ph.opacity}"/>`);
-  }
   // Landmarks
   for (const lm of state.landmarks) {
-    const phaseAttr = lm.phaseId != null ? ` data-phase-id="${lm.phaseId}"` : '';
-    parts.push(`  <g class="landmark" data-id="${lm.id}"${phaseAttr} data-name="${escapeXml(lm.name)}">`);
+    parts.push(`  <g class="landmark" data-id="${lm.id}" data-name="${escapeXml(lm.name)}">`);
     parts.push(`    <circle cx="${lm.x.toFixed(2)}" cy="${lm.y.toFixed(2)}" r="6" fill="${lm.color}" stroke="black" stroke-width="1"/>`);
     parts.push(`    <text x="${(lm.x + 10).toFixed(2)}" y="${(lm.y - 8).toFixed(2)}" fill="${lm.color}" font-size="12" font-family="monospace" stroke="black" stroke-width="3" paint-order="stroke">${escapeXml(lm.name)}</text>`);
     parts.push(`  </g>`);
@@ -4495,67 +4177,167 @@ function loadJsonFile(file) {
   reader.onload = (e) => {
     try {
       const data = JSON.parse(e.target.result);
-      if (data.landmarks && Array.isArray(data.landmarks)) {
-        state.landmarks = data.landmarks.map(l => ({
-          id: l.id || state.nextId++,
-          name: l.name,
-          type: l.type || 'point',
-          x: l.x, y: l.y,
-          color: l.color || COLORS[state.landmarks.length % COLORS.length],
-          phaseId: l.phaseId != null ? l.phaseId : null,
-        }));
-        state.nextId = Math.max(state.nextId, ...state.landmarks.map(l => l.id + 1));
-        if (data.calibration && data.calibration.pxPerCm) {
-          state.pxPerCm = data.calibration.pxPerCm;
-          $('pxPerCm').value = state.pxPerCm.toFixed(2);
-          $('btnClearCal').disabled = false;
-        }
-        // v1.6: hydrate phases. v1.5 files have no `phases` field — in
-        // that case we treat every existing trace-grouped point as a
-        // single implicit "Phase 1" so the user can still add more
-        // phases on top. Non-trace landmarks stay free (no phaseId).
-        state.phases = [];
-        state.nextPhaseId = 1;
-        state.activePhaseId = null;
-        if (Array.isArray(data.phases) && data.phases.length > 0) {
-          for (const p of data.phases) {
-            state.phases.push({
-              id: p.id,
-              name: p.name || `Phase ${p.id}`,
-              color: p.color || PHASE_COLORS[0],
-              visible: p.visible !== false,
-              asReference: !!p.asReference,
-              opacity: typeof p.opacity === 'number' ? p.opacity : 0.35,
-              pointIds: new Set(Array.isArray(p.pointIds) ? p.pointIds : []),
-            });
-            if (p.id >= state.nextPhaseId) state.nextPhaseId = p.id + 1;
-          }
-          if (data.activePhaseId && state.phases.find(p => p.id === data.activePhaseId)) {
-            state.activePhaseId = data.activePhaseId;
-          } else {
-            state.activePhaseId = state.phases[0].id;
-          }
+      
+      state.frames = [];
+      
+      if (data.version === '3.0-sequence' && data.frames && Array.isArray(data.frames)) {
+        // Parse 3.0-sequence format
+        data.frames.forEach((f, idx) => {
+          const landmarks = f.landmarks.map(l => ({
+            id: l.id || state.nextId++,
+            name: l.name,
+            type: l.type || 'point',
+            x: l.x,
+            y: l.y,
+            color: l.color || COLORS[state.landmarks.length % COLORS.length],
+            group: l.group || (l.name.startsWith('trace_') ? 'trace' : null),
+            handleIn: l.handleIn || { x: 0, y: 0 },
+            handleOut: l.handleOut || { x: 0, y: 0 },
+            handleType: l.handleType || 'auto',
+          }));
+          
+          state.frames.push({
+            landmarks: landmarks,
+            image: null,
+            imageName: f.image ? f.image.name : '',
+            imageDataUrl: '',
+            naturalW: f.image ? f.image.width : 0,
+            naturalH: f.image ? f.image.height : 0,
+            edgeMap: null,
+            edgeW: 0,
+            edgeH: 0,
+            edgeReady: false,
+            edgeComputing: false
+          });
+        });
+      } else if (data.landmarks && Array.isArray(data.landmarks)) {
+        const isMorph = data.version === '2.0-morph' || (data.landmarks[0] && ('x_A' in data.landmarks[0]));
+        
+        if (isMorph) {
+          // Parse State A (Frame 1)
+          const landmarksA = data.landmarks.map(l => ({
+            id: l.id || state.nextId++,
+            name: l.name,
+            type: l.type || 'point',
+            x: l.x_A,
+            y: l.y_A,
+            color: l.color || COLORS[state.landmarks.length % COLORS.length],
+            group: l.group || (l.name.startsWith('trace_') ? 'trace' : null),
+            handleIn: l.handleIn_A || l.handleIn || { x: 0, y: 0 },
+            handleOut: l.handleOut_A || l.handleOut || { x: 0, y: 0 },
+            handleType: l.handleType_A || l.handleType || 'auto',
+          }));
+          
+          // Parse State B (Frame 2)
+          const landmarksB = data.landmarks.map(l => ({
+            id: l.id || state.nextId++,
+            name: l.name,
+            type: l.type || 'point',
+            x: l.x_B,
+            y: l.y_B,
+            color: l.color || COLORS[state.landmarks.length % COLORS.length],
+            group: l.group || (l.name.startsWith('trace_') ? 'trace' : null),
+          }));
+          
+          state.frames.push({
+            landmarks: landmarksA,
+            image: null,
+            imageName: data.imageA ? data.imageA.name : '',
+            imageDataUrl: '',
+            naturalW: data.imageA ? data.imageA.width : 0,
+            naturalH: data.imageA ? data.imageA.height : 0,
+            edgeMap: null,
+            edgeW: 0,
+            edgeH: 0,
+            edgeReady: false,
+            edgeComputing: false
+          });
+          
+          state.frames.push({
+            landmarks: landmarksB,
+            image: null,
+            imageName: data.imageB ? data.imageB.name : '',
+            imageDataUrl: '',
+            naturalW: data.imageB ? data.imageB.width : 0,
+            naturalH: data.imageB ? data.imageB.height : 0,
+            edgeMap: null,
+            edgeW: 0,
+            edgeH: 0,
+            edgeReady: false,
+            edgeComputing: false
+          });
         } else {
-          // v1.5 fallback: bucket every trace-grouped point into Phase 1
-          const traceIds = state.landmarks.filter(l => l.group === 'trace').map(l => l.id);
-          if (traceIds.length > 0) {
-            const ph = createPhase('Phase 1', PHASE_COLORS[0]);
-            for (const id of traceIds) {
-              ph.pointIds.add(id);
-              const lm = state.landmarks.find(l => l.id === id);
-              if (lm) lm.phaseId = ph.id;
-            }
-            state.activePhaseId = ph.id;
-          } else {
-            ensureDefaultPhase();
-          }
+          // Legacy 1.0 (single frame)
+          const landmarks = data.landmarks.map(l => ({
+            id: l.id || state.nextId++,
+            name: l.name,
+            type: l.type || 'point',
+            x: l.x,
+            y: l.y,
+            color: l.color || COLORS[state.landmarks.length % COLORS.length],
+            group: l.group || (l.name.startsWith('trace_') ? 'trace' : null),
+          }));
+          
+          state.frames.push({
+            landmarks: landmarks,
+            image: null,
+            imageName: data.image ? data.image.name : '',
+            imageDataUrl: '',
+            naturalW: data.image ? data.image.width : 0,
+            naturalH: data.image ? data.image.height : 0,
+            edgeMap: null,
+            edgeW: 0,
+            edgeH: 0,
+            edgeReady: false,
+            edgeComputing: false
+          });
         }
-        renderPhasesList();
-        renderAll();
-        setStatus(`Loaded ${state.landmarks.length} landmarks from ${file.name}.`, 'ok');
       } else {
-        alert('JSON does not contain a landmarks array.');
+        alert('JSON format not recognized.');
+        return;
       }
+      
+      // Update state nextId
+      let maxId = 0;
+      state.frames.forEach(f => {
+        f.landmarks.forEach(l => {
+          if (l.id > maxId) maxId = l.id;
+        });
+      });
+      state.nextId = maxId + 1;
+      
+      // Load calibration if present
+      if (data.calibration && data.calibration.pxPerCm) {
+        state.pxPerCm = data.calibration.pxPerCm;
+        $('pxPerCm').value = state.pxPerCm.toFixed(2);
+        $('btnClearCal').disabled = false;
+      } else {
+        state.pxPerCm = null;
+        $('pxPerCm').value = '';
+        $('btnClearCal').disabled = true;
+      }
+
+      // Auto-detect preset if landmarks match preset names
+      state.activePreset = null;
+      for (const presetName of Object.keys(state.presets)) {
+        const preset = state.presets[presetName];
+        if (!preset || !preset.landmarks) continue;
+        const presetNames = preset.landmarks.map(l => l.name);
+        const loadedNames = state.frames[0].landmarks.map(l => l.name);
+        const match = presetNames.every(name => loadedNames.includes(name));
+        if (match) {
+          state.activePreset = presetName;
+          $('presetSelect').value = presetName;
+          $('btnApplyPreset').disabled = false;
+          $('btnDeletePreset').disabled = !!BUILTIN_PRESETS[presetName];
+          $('topologyLegend').style.display = preset.groups ? 'block' : 'none';
+          break;
+        }
+      }
+      
+      // Load first frame
+      loadFrame(0);
+      setStatus(`Loaded sequence with ${state.frames.length} frames from ${file.name}.`, 'ok');
     } catch (err) {
       alert('Failed to parse JSON: ' + err.message);
     }
