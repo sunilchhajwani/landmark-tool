@@ -1,0 +1,201 @@
+{
+  "version": "1.0",
+  "name": "PLAX (Parasternal Long Axis)",
+  "canvas": { "width": 800, "height": 500, "background": "#050810" },
+  "palette": {
+    "lv_wall":   "#2c8aff",
+    "rv_wall":   "#ff7a5f",
+    "la_wall":   "#ffb86b",
+    "ao_wall":   "#c88aff",
+    "mv":        "#ffd45f",
+    "av":        "#5fffd2",
+    "reference": "#8a9bb0"
+  },
+  "phase": { "systole_peak": 0.35, "diastole_peak": 0.85 },
+  "structures": [
+    {
+      "id": "lv",
+      "type": "loop",
+      "label": "Left Ventricle",
+      "color": "lv_wall",
+      "fill": "rgba(44, 138, 255, 0.12)",
+      "stroke_width": 2.2,
+      "landmarks": [
+        { "x": 0.18, "y": 0.55, "name": "lv_apex" },
+        { "x": 0.20, "y": 0.42, "name": "lv_anterior_base" },
+        { "x": 0.32, "y": 0.36, "name": "lv_anterior_mid" },
+        { "x": 0.46, "y": 0.40, "name": "lv_anterior_base2" },
+        { "x": 0.55, "y": 0.45, "name": "lv_septal_upper" },
+        { "x": 0.52, "y": 0.58, "name": "lv_septal_mid" },
+        { "x": 0.42, "y": 0.65, "name": "lv_inferior_mid" },
+        { "x": 0.28, "y": 0.68, "name": "lv_inferior_base" }
+      ],
+      "contraction": {
+        "center": { "x": 0.36, "y": 0.52 },
+        "amplitude": 0.18,
+        "phase_offset": 0,
+        "waveform": "sine"
+      }
+    },
+    {
+      "id": "rv",
+      "type": "loop",
+      "label": "Right Ventricle (Outflow)",
+      "color": "rv_wall",
+      "fill": "rgba(255, 122, 95, 0.10)",
+      "stroke_width": 1.8,
+      "landmarks": [
+        { "x": 0.46, "y": 0.40, "name": "rv_septal" },
+        { "x": 0.58, "y": 0.32, "name": "rv_outflow_anterior" },
+        { "x": 0.72, "y": 0.30, "name": "rv_outflow_superior" },
+        { "x": 0.80, "y": 0.36, "name": "rv_outflow_posterior" }
+      ],
+      "contraction": {
+        "center": { "x": 0.62, "y": 0.34 },
+        "amplitude": 0.12,
+        "phase_offset": 0,
+        "waveform": "sine"
+      }
+    },
+    {
+      "id": "la",
+      "type": "loop",
+      "label": "Left Atrium",
+      "color": "la_wall",
+      "fill": "rgba(255, 184, 107, 0.08)",
+      "stroke_width": 1.5,
+      "landmarks": [
+        { "x": 0.55, "y": 0.45, "name": "la_anterior" },
+        { "x": 0.66, "y": 0.50, "name": "la_superior" },
+        { "x": 0.72, "y": 0.62, "name": "la_posterior" },
+        { "x": 0.60, "y": 0.68, "name": "la_inferior" }
+      ],
+      "contraction": {
+        "center": { "x": 0.63, "y": 0.56 },
+        "amplitude": 0.10,
+        "phase_offset": 2.51,
+        "waveform": "sine"
+      }
+    },
+    {
+      "id": "ao_root",
+      "type": "loop",
+      "label": "Aortic Root",
+      "color": "ao_wall",
+      "fill": "rgba(200, 138, 255, 0.10)",
+      "stroke_width": 2,
+      "landmarks": [
+        { "x": 0.72, "y": 0.30, "name": "ao_anterior" },
+        { "x": 0.82, "y": 0.38, "name": "ao_right" },
+        { "x": 0.80, "y": 0.50, "name": "ao_posterior" },
+        { "x": 0.70, "y": 0.50, "name": "ao_left" }
+      ],
+      "contraction": {
+        "center": { "x": 0.76, "y": 0.42 },
+        "amplitude": 0.06,
+        "phase_offset": 1.10,
+        "waveform": "sine"
+      }
+    },
+    {
+      "id": "mv_ant",
+      "type": "gate",
+      "label": "Mitral Valve (Anterior)",
+      "color": "mv",
+      "stroke_width": 2.8,
+      "hinge": { "x": 0.55, "y": 0.45 },
+      "leaflet": {
+        "rest_direction": { "x": -0.5, "y": 0.85 },
+        "rest_length": 110
+      },
+      "motion": {
+        "swing_degrees": 65,
+        "closed_phase": 0.35,
+        "open_phase": 0.85,
+        "waveform": "sine"
+      },
+      "coaptation_with": "mv_post"
+    },
+    {
+      "id": "mv_post",
+      "type": "gate",
+      "label": "Mitral Valve (Posterior)",
+      "color": "mv",
+      "stroke_width": 2.8,
+      "hinge": { "x": 0.60, "y": 0.68 },
+      "leaflet": {
+        "rest_direction": { "x": -0.5, "y": -0.85 },
+        "rest_length": 95
+      },
+      "motion": {
+        "swing_degrees": 60,
+        "closed_phase": 0.35,
+        "open_phase": 0.85,
+        "waveform": "sine"
+      },
+      "coaptation_with": "mv_ant"
+    },
+    {
+      "id": "av_right",
+      "type": "gate",
+      "label": "Aortic Valve (Right Cusp)",
+      "color": "av",
+      "stroke_width": 2.5,
+      "hinge": { "x": 0.72, "y": 0.42 },
+      "leaflet": {
+        "rest_direction": { "x": 0.4, "y": -0.9 },
+        "rest_length": 55
+      },
+      "motion": {
+        "swing_degrees": 75,
+        "closed_phase": 0.85,
+        "open_phase": 0.30,
+        "waveform": "sine"
+      },
+      "coaptation_with": "av_left"
+    },
+    {
+      "id": "av_left",
+      "type": "gate",
+      "label": "Aortic Valve (Left Cusp)",
+      "color": "av",
+      "stroke_width": 2.5,
+      "hinge": { "x": 0.76, "y": 0.50 },
+      "leaflet": {
+        "rest_direction": { "x": 0.4, "y": 0.9 },
+        "rest_length": 55
+      },
+      "motion": {
+        "swing_degrees": 75,
+        "closed_phase": 0.85,
+        "open_phase": 0.30,
+        "waveform": "sine"
+      },
+      "coaptation_with": "av_right"
+    },
+    {
+      "id": "lv_outflow",
+      "type": "channel",
+      "label": "LV Outflow Tract",
+      "color": "rv_wall",
+      "stroke_width": 1.2,
+      "inlet": { "x": 0.46, "y": 0.40, "half_width": 22 },
+      "outlet": { "x": 0.72, "y": 0.42 },
+      "taper": {
+        "profile": "cubic",
+        "pulse_amplitude": 0.05,
+        "pulse_phase_offset": 0
+      }
+    },
+    {
+      "id": "ascending_aorta",
+      "type": "channel",
+      "label": "Ascending Aorta",
+      "color": "ao_wall",
+      "stroke_width": 1.2,
+      "inlet": { "x": 0.76, "y": 0.40, "half_width": 30 },
+      "outlet": { "x": 0.97, "y": 0.30 },
+      "taper": { "profile": "cubic" }
+    }
+  ]
+}

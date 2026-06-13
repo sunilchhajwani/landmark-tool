@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Anatomy Simulator — Static</title>
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Anatomy Simulator</span>
+        <span class="brand-sub" id="spec-name">— no spec loaded —</span>
+      </div>
+      <div class="status">
+        <span class="status-item">points <span id="readout-points">0</span></span>
+        <span class="status-item">groups <span id="readout-groups">0</span></span>
+        <span class="status-item">mode <span id="readout-mode">static</span></span>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="stage">
+        <div class="bezel">
+          <svg id="canvas" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+        <div class="phase-bar">
+          <div class="phase-track">
+            <div class="phase-tick" style="left:0%"></div>
+            <div class="phase-tick" style="left:25%"></div>
+            <div class="phase-tick" style="left:50%"></div>
+            <div class="phase-tick" style="left:75%"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-section">
+          <h3>Spec</h3>
+          <div class="row">
+            <label class="lbl">Source</label>
+            <select id="spec-source">
+              <optgroup label="Examples" id="examples-group"></optgroup>
+              <option value="__paste__">Paste JSON...</option>
+              <option value="__file__">Load file...</option>
+            </select>
+          </div>
+          <input type="file" id="spec-file" accept="application/json" style="display:none">
+          <textarea id="spec-paste" placeholder='Paste landmark JSON here, then click "Load pasted"' style="display:none"></textarea>
+          <button id="spec-paste-load" class="btn" style="display:none">Load pasted</button>
+        </div>
+
+        <div class="panel-section">
+          <h3>View</h3>
+          <div class="row">
+            <label class="lbl"><input type="checkbox" id="ctl-dots" checked> Landmark dots</label>
+          </div>
+          <div class="row">
+            <label class="lbl"><input type="checkbox" id="ctl-scanlines" checked> Scanlines</label>
+          </div>
+        </div>
+
+        <div class="panel-section" id="legend">
+          <h3>Legend</h3>
+          <div id="legend-body" class="legend-body"></div>
+        </div>
+
+        <div class="panel-section">
+          <h3>Next</h3>
+          <p class="muted small">Static image ready. Wire to engine (loops / walls / gates / channels) to begin φ-driven motion. Auto-coaptation, flow alignment, cubic taper activate once the spec has the right structure types.</p>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="footbar">
+      <span class="muted">Static renderer. Generic, color-grouped. Will be replaced by Engine + Renderer when spec is upgraded to v2.</span>
+    </footer>
+  </div>
+
+  <script src="src/static.js"></script>
+  <script src="src/app-static.js"></script>
+</body>
+</html>

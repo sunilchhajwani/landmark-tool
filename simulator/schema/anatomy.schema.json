@@ -1,0 +1,243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Generic Anatomy Simulator Input",
+  "description": "Static landmark JSON driven through φ∈[0,2π] by the simulator engine. Domain-agnostic: PLAX, PSAX, apical-4ch, valve-tree, vascular-tree all conform.",
+  "type": "object",
+  "required": ["version", "canvas", "structures"],
+  "properties": {
+    "version": { "type": "string", "const": "1.0" },
+    "name": { "type": "string", "description": "Human-readable name, shown in UI" },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width":  { "type": "number", "description": "SVG viewBox width" },
+        "height": { "type": "number", "description": "SVG viewBox height" },
+        "background": { "type": "string", "default": "#050810" }
+      }
+    },
+    "palette": {
+      "type": "object",
+      "description": "Optional named color tokens. Structures reference by name.",
+      "additionalProperties": { "type": "string" }
+    },
+    "phase": {
+      "type": "object",
+      "description": "Global phase parameters",
+      "properties": {
+        "systole_peak": { "type": "number", "default": 0.5, "description": "φ value at peak systole (0..1, where 1 == 2π)" },
+        "diastole_peak": { "type": "number", "default": 1.0, "description": "φ value at peak diastole" }
+      }
+    },
+    "structures": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/loop" },
+          { "$ref": "#/definitions/wall" },
+          { "$ref": "#/definitions/gate" },
+          { "$ref": "#/definitions/channel" },
+          { "$ref": "#/definitions/reference" }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "loop": {
+      "type": "object",
+      "required": ["id", "type", "landmarks", "contraction"],
+      "properties": {
+        "id":   { "type": "string" },
+        "type": { "const": "loop" },
+        "label": { "type": "string" },
+        "color": { "type": "string" },
+        "fill":   { "type": "string", "description": "Semi-transparent fill, e.g. rgba(...) or #rrggbbaa" },
+        "stroke_width": { "type": "number", "default": 2 },
+        "landmarks": {
+          "type": "array",
+          "description": "Ordered polyline landmarks forming a closed loop. Coordinates are 0..1 fractions of canvas (width, height).",
+          "items": {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+              "x":  { "type": "number", "minimum": 0, "maximum": 1 },
+              "y":  { "type": "number", "minimum": 0, "maximum": 1 },
+              "name": { "type": "string" }
+            }
+          },
+          "minItems": 3
+        },
+        "contraction": {
+          "type": "object",
+          "required": ["center", "amplitude"],
+          "properties": {
+            "center": {
+              "type": "object",
+              "required": ["x", "y"],
+              "properties": { "x": { "type": "number", "minimum": 0, "maximum": 1 }, "y": { "type": "number", "minimum": 0, "maximum": 1 } }
+            },
+            "amplitude": { "type": "number", "default": 0.15, "description": "Fractional radial displacement at peak contraction" },
+            "phase_offset": { "type": "number", "default": 0, "description": "φ offset in radians, structure contracts at its own peak" },
+            "waveform": { "enum": ["sine", "cosine", "pulse"], "default": "sine" }
+          }
+        }
+      }
+    },
+    "wall": {
+      "type": "object",
+      "required": ["id", "type", "landmarks", "contraction"],
+      "properties": {
+        "id":   { "type": "string" },
+        "type": { "const": "wall" },
+        "label": { "type": "string" },
+        "color": { "type": "string" },
+        "stroke_width": { "type": "number", "default": 2 },
+        "landmarks": {
+          "type": "array",
+          "description": "Open polyline (not closed). Pulsing is radial from contraction.center.",
+          "items": {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+              "x": { "type": "number", "minimum": 0, "maximum": 1 },
+              "y": { "type": "number", "minimum": 0, "maximum": 1 },
+              "name": { "type": "string" }
+            }
+          },
+          "minItems": 2
+        },
+        "contraction": {
+          "type": "object",
+          "required": ["center", "amplitude"],
+          "properties": {
+            "center": {
+              "type": "object",
+              "required": ["x", "y"],
+              "properties": { "x": { "type": "number", "minimum": 0, "maximum": 1 }, "y": { "type": "number", "minimum": 0, "maximum": 1 } }
+            },
+            "amplitude": { "type": "number", "default": 0.10 },
+            "phase_offset": { "type": "number", "default": 0 },
+            "waveform": { "enum": ["sine", "cosine", "pulse"], "default": "sine" }
+          }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "required": ["id", "type", "hinge", "leaflet", "motion"],
+      "properties": {
+        "id":   { "type": "string" },
+        "type": { "const": "gate" },
+        "label": { "type": "string" },
+        "color": { "type": "string" },
+        "stroke_width": { "type": "number", "default": 2.5 },
+        "hinge": {
+          "type": "object",
+          "required": ["x", "y"],
+          "description": "Anchor point. Hinge itself does NOT pulse — it sits in the annulus which is fixed.",
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "leaflet": {
+          "type": "object",
+          "required": ["rest_direction", "rest_length"],
+          "description": "Leaflet is rendered as a 3-pt polyline: hinge -> midpoint -> free tip. rest_direction is a unit vector at rest (φ=0). rest_length is the leaflet's free length in canvas units; the engine scales it at runtime for auto-coaptation.",
+          "properties": {
+            "rest_direction": {
+              "type": "object",
+              "required": ["x", "y"],
+              "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+            },
+            "rest_length": { "type": "number", "description": "Canvas units, before runtime coaptation scaling" }
+          }
+        },
+        "motion": {
+          "type": "object",
+          "required": ["swing_degrees"],
+          "description": "Rotation about hinge.",
+          "properties": {
+            "swing_degrees": { "type": "number", "default": 70, "description": "Peak rotation in degrees" },
+            "closed_phase": { "type": "number", "default": 0, "description": "φ value at which this gate is fully closed (0..1)" },
+            "open_phase":   { "type": "number", "default": 0.5, "description": "φ value at which this gate is fully open" },
+            "waveform": { "enum": ["sine", "cosine", "pulse"], "default": "sine" }
+          }
+        },
+        "coaptation_with": {
+          "type": "string",
+          "description": "ID of the opposing gate. If set, leaflet tip is auto-scaled at runtime so the two tips meet exactly at the closed phase, regardless of wall contraction."
+        },
+        "channel_id": {
+          "type": "string",
+          "description": "If set, hinge line between this gate and its coaptation_with gate is forced perpendicular to the channel's long axis at runtime (flow alignment)."
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "required": ["id", "type", "inlet", "outlet", "taper"],
+      "properties": {
+        "id":   { "type": "string" },
+        "type": { "const": "channel" },
+        "label": { "type": "string" },
+        "color": { "type": "string" },
+        "stroke_width": { "type": "number", "default": 1.5 },
+        "inlet": {
+          "type": "object",
+          "required": ["x", "y", "half_width"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "half_width": { "type": "number", "description": "Half-width of channel at inlet, in canvas units" }
+          }
+        },
+        "outlet": {
+          "type": "object",
+          "required": ["x", "y"],
+          "description": "At outlet, half_width is 0 (taper to point) — prevents unnatural inward bending at the join.",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "taper": {
+          "type": "object",
+          "properties": {
+            "profile": { "enum": ["linear", "cubic", "quintic"], "default": "cubic", "description": "Width falloff inlet -> outlet. Cubic gives zero derivative at outlet (smooth). Linear gives a visible kink." },
+            "pulse_amplitude": { "type": "number", "default": 0.05, "description": "Optional radial pulsing of channel walls, fractional" },
+            "pulse_phase_offset": { "type": "number", "default": 0 }
+          }
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["id", "type", "shape"],
+      "description": "Static reference geometry (e.g. annotation circles, scale bars). Not animated.",
+      "properties": {
+        "id":   { "type": "string" },
+        "type": { "const": "reference" },
+        "label": { "type": "string" },
+        "color": { "type": "string" },
+        "shape": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "center", "radius"],
+              "properties": {
+                "kind": { "const": "circle" },
+                "center": {
+                  "type": "object",
+                  "required": ["x", "y"],
+                  "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+                },
+                "radius": { "type": "number" }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

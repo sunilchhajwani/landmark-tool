@@ -1,0 +1,248 @@
+/* Anatomy Simulator — shared styles
+ * Dark medical-monitor aesthetic. Generic, no anatomy-specific terms.
+ */
+
+:root {
+  --bg-0:   #02050a;
+  --bg-1:   #050a14;
+  --bg-2:   #0a1422;
+  --bg-3:   #0e1a2e;
+  --line:   #1a3a5a;
+  --line-d: #0e2a3a;
+  --txt:    #cfe6f5;
+  --txt-d:  #6a8095;
+  --txt-x:  #3a4a5a;
+  --acc:    #00ffe1;
+  --acc-d:  #00b8a0;
+  --warn:   #ff7a5f;
+  --ok:     #5fffd2;
+  --err:    #ff5d6c;
+  --font:   'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg-0);
+  color: var(--txt);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: 44px 1fr 24px;
+  height: 100vh;
+}
+
+/* ---- top bar ---- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+  background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(0,255,225,0.05);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 8px var(--acc);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.brand-name { font-weight: 600; letter-spacing: 0.5px; }
+.brand-sub  { color: var(--txt-d); font-size: 11px; }
+.status { display: flex; gap: 18px; font-size: 11px; color: var(--txt-d); }
+.status-item span { color: var(--acc); font-weight: 600; margin-left: 4px; }
+
+/* ---- main split ---- */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  min-height: 0;
+}
+
+/* ---- stage / canvas ---- */
+.stage {
+  display: grid;
+  grid-template-rows: 1fr 36px;
+  background: var(--bg-0);
+  padding: 12px;
+  min-width: 0;
+}
+.bezel {
+  position: relative;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 40px rgba(0,255,225,0.04),
+    0 0 20px rgba(0,0,0,0.6);
+}
+.bezel::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 30%, transparent 70%, rgba(0,0,0,0.3));
+  pointer-events: none;
+  z-index: 10;
+}
+#canvas { width: 100%; height: 100%; display: block; }
+
+.phase-bar {
+  display: flex; align-items: center; padding: 0 4px;
+}
+.phase-track {
+  position: relative; width: 100%; height: 18px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-d);
+  border-radius: 2px;
+}
+.phase-tick {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--line);
+}
+.phase-tick-zero { background: var(--acc); opacity: 0.6; }
+.phase-marker {
+  position: absolute; top: -2px; bottom: -2px; width: 2px;
+  background: var(--acc);
+  box-shadow: 0 0 6px var(--acc);
+  left: 0%;
+}
+.phase-label {
+  position: absolute; top: 1px; font-size: 9px; color: var(--txt-x);
+  pointer-events: none;
+}
+.phase-label-sys { left: 25%; }
+.phase-label-dia { left: 75%; }
+
+/* ---- panel ---- */
+.panel {
+  background: var(--bg-1);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 12px;
+}
+.panel-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-d);
+}
+.panel-section:last-child { border-bottom: none; }
+.panel h3 {
+  margin: 0 0 8px 0;
+  font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--acc);
+}
+.row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.row.btns { gap: 6px; }
+.lbl {
+  flex: 0 0 110px;
+  font-size: 11px;
+  color: var(--txt-d);
+  display: flex; align-items: center; gap: 4px;
+}
+.muted { color: var(--txt-d); font-size: 10px; }
+.small { font-size: 11px; line-height: 1.5; }
+.val {
+  flex: 0 0 50px;
+  text-align: right;
+  color: var(--acc);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+input[type="range"] {
+  flex: 1;
+  appearance: none; -webkit-appearance: none;
+  height: 4px;
+  background: var(--bg-3);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  background: var(--acc);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 6px var(--acc);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px;
+  background: var(--acc);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 6px var(--acc);
+}
+select, textarea, input[type="text"] {
+  flex: 1;
+  background: var(--bg-2);
+  color: var(--txt);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 4px 6px;
+  font-family: var(--font);
+  font-size: 11px;
+}
+textarea { height: 100px; resize: vertical; font-size: 10px; }
+input[type="checkbox"] { accent-color: var(--acc); }
+
+.btn {
+  background: var(--bg-2);
+  color: var(--txt);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 5px 10px;
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn:hover { border-color: var(--acc); color: var(--acc); }
+.btn.primary {
+  background: linear-gradient(180deg, rgba(0,255,225,0.15), rgba(0,255,225,0.05));
+  border-color: var(--acc);
+  color: var(--acc);
+}
+.btn.primary:hover { box-shadow: 0 0 8px rgba(0,255,225,0.3); }
+
+/* ---- legend ---- */
+.legend-body { display: flex; flex-direction: column; gap: 4px; }
+.legend-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px;
+  color: var(--txt);
+}
+.legend-swatch {
+  width: 14px; height: 8px;
+  border-radius: 1px;
+  box-shadow: 0 0 4px currentColor;
+}
+.legend-count { color: var(--txt-d); font-size: 10px; margin-left: auto; }
+
+/* ---- footer ---- */
+.footbar {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line-d);
+  font-size: 10px;
+}
+
+/* ---- scrollbar ---- */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-1); }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--acc-d); }
