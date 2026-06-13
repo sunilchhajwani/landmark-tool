@@ -1840,6 +1840,7 @@ function computeConnections(presetName, landmarksArray) {
             closed: !!group.closed,
             color: group.color || '#888',
             points,
+            _originalGroup: group,
           });
         }
       }
@@ -1930,18 +1931,21 @@ function connectionPathD(conn) {
 function bezierPathFromPoints(pts, closed) {
   if (pts.length === 0) return '';
   if (pts.length === 1) return `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
-  if (pts.length === 2) {
-    // 2 points: use handles if available, else straight line
+  
+  const n = pts.length;
+  if (n === 2) {
     const p1 = pts[0], p2 = pts[1];
-    const h1out = p1.handleOut || { x: 0, y: 0 };
-    const h2in = p2.handleIn || { x: 0, y: 0 };
-    if (p1.handleType !== 'auto' && p2.handleType !== 'auto' && (h1out.x !== 0 || h1out.y !== 0 || h2in.x !== 0 || h2in.y !== 0)) {
-      return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} C ${(p1.x + h1out.x).toFixed(2)} ${(p1.y + h1out.y).toFixed(2)}, ${(p2.x + h2in.x).toFixed(2)} ${(p2.y + h2in.y).toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    const hasExplicit = (p1.handleType && p1.handleType !== 'auto') || (p2.handleType && p2.handleType !== 'auto');
+    if (hasExplicit) {
+      const h1 = getEffectiveHandle(p1, 'out', pts, 0, false);
+      const h2 = getEffectiveHandle(p2, 'in', pts, 1, false);
+      if (h1.x !== 0 || h1.y !== 0 || h2.x !== 0 || h2.y !== 0) {
+        return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} C ${(p1.x + h1.x).toFixed(2)} ${(p1.y + h1.y).toFixed(2)}, ${(p2.x + h2.x).toFixed(2)} ${(p2.y + h2.y).toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+      }
     }
     return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
   }
 
-  const n = pts.length;
   const get = (i) => {
     if (closed) return pts[((i % n) + n) % n];
     if (i < 0) return pts[0];
@@ -1956,40 +1960,13 @@ function bezierPathFromPoints(pts, closed) {
     const p1 = get(i);
     const p2 = get(i + 1);
 
-    // Get effective outgoing handle for p1
-    let c1x, c1y;
-    if (p1.handleType !== 'auto' && p1.handleOut && (p1.handleOut.x !== 0 || p1.handleOut.y !== 0)) {
-      c1x = p1.x + p1.handleOut.x;
-      c1y = p1.y + p1.handleOut.y;
-    } else {
-      // Auto: Catmull-Rom (central difference, /6 form). Clamp to the same
-      // cap used by getAutoHandlePosition so the rendered curve's control
-      // points match the visible handle circle exactly.
-      const p0 = get(i - 1);
-      const p3 = get(i + 1);
-      const ax = (p3.x - p0.x) / 6;
-      const ay = (p3.y - p0.y) / 6;
-      const [cx, cy] = clampHandleVector(ax, ay);
-      c1x = p1.x + cx;
-      c1y = p1.y + cy;
-    }
+    const h1 = getEffectiveHandle(p1, 'out', pts, i, closed);
+    const h2 = getEffectiveHandle(p2, 'in', pts, (i + 1) % n, closed);
 
-    // Get effective incoming handle for p2
-    let c2x, c2y;
-    if (p2.handleType !== 'auto' && p2.handleIn && (p2.handleIn.x !== 0 || p2.handleIn.y !== 0)) {
-      c2x = p2.x + p2.handleIn.x;
-      c2y = p2.y + p2.handleIn.y;
-    } else {
-      // Auto: Catmull-Rom. Clamp the same way as c1 for visual consistency
-      // between the curve and the handle circle.
-      const p1_ = get(i);
-      const p3 = get(i + 2);
-      const ax = -(p3.x - p1_.x) / 6;
-      const ay = -(p3.y - p1_.y) / 6;
-      const [cx, cy] = clampHandleVector(ax, ay);
-      c2x = p2.x + cx;
-      c2y = p2.y + cy;
-    }
+    const c1x = p1.x + h1.x;
+    const c1y = p1.y + h1.y;
+    const c2x = p2.x + h2.x;
+    const c2y = p2.y + h2.y;
 
     d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
   }
@@ -2573,6 +2550,24 @@ function exportCurrentPresetFile() {
 }
 
 function deleteLandmark(id) {
+  // Find the name of the landmark to delete
+  const activeFrame = state.frames[state.activeFrameIdx];
+  const lmToDelete = activeFrame && activeFrame.landmarks.find(l => l.id === id);
+  if (lmToDelete) {
+    const name = lmToDelete.name;
+    // Clean up from active preset's groups
+    if (state.activePreset && state.presets[state.activePreset]) {
+      const preset = state.presets[state.activePreset];
+      if (preset.groups) {
+        preset.groups.forEach(group => {
+          if (group.members) {
+            group.members = group.members.filter(m => m !== name);
+          }
+        });
+      }
+    }
+  }
+
   state.frames.forEach(frame => {
     frame.landmarks = frame.landmarks.filter(l => l.id !== id);
   });
@@ -2823,8 +2818,26 @@ function insertCurvePoint(seg, fallbackX, fallbackY) {
     name = `p_${id}`;
     group = null;
   }
-  const lm = { id, name, type: 'point', x, y, color, group };
-  state.landmarks.push(lm);
+  const lm = {
+    id, name, type: 'point', x, y, color, group,
+    handleIn: { x: 0, y: 0 },
+    handleOut: { x: 0, y: 0 },
+    handleType: 'auto',
+  };
+
+  if (state.activePreset && conn._originalGroup) {
+    const groupObj = conn._originalGroup;
+    groupObj.members.splice(seg.segIdx + 1, 0, name);
+  }
+
+  if (isTrace) {
+    state.landmarks.push(lm);
+  } else {
+    state.frames.forEach(frame => {
+      frame.landmarks.push(JSON.parse(JSON.stringify(lm)));
+    });
+  }
+
   renderAll();
 }
 
@@ -2940,18 +2953,32 @@ function getAutoHandlePosition(lm, which, pts, idx, closed) {
     return pts[Math.max(0, Math.min(n - 1, i))];
   };
 
-  // Compute the raw (unclamped) auto handle vector from the local tangent.
   let vx, vy;
-  if (which === 'out') {
-    const p1 = get(idx);
-    const p2 = get(idx + 1);
-    vx = (p2.x - p1.x) / 3;
-    vy = (p2.y - p1.y) / 3;
+  if (n === 2) {
+    const p1 = pts[0], p2 = pts[1];
+    if (which === 'out' && idx === 0) {
+      vx = (p2.x - p1.x) / 3;
+      vy = (p2.y - p1.y) / 3;
+    } else if (which === 'in' && idx === 1) {
+      vx = -(p2.x - p1.x) / 3;
+      vy = -(p2.y - p1.y) / 3;
+    } else {
+      vx = 0;
+      vy = 0;
+    }
   } else {
-    const p1 = get(idx - 1);
-    const p2 = get(idx);
-    vx = (p2.x - p1.x) / 3;
-    vy = (p2.y - p1.y) / 3;
+    // Central difference (Catmull-Rom) for n >= 3
+    const pPrev = get(idx - 1);
+    const pNext = get(idx + 1);
+    const ax = (pNext.x - pPrev.x) / 6;
+    const ay = (pNext.y - pPrev.y) / 6;
+    if (which === 'out') {
+      vx = ax;
+      vy = ay;
+    } else {
+      vx = -ax;
+      vy = -ay;
+    }
   }
 
   // Clamp via the shared helper so the handle is always reachable on screen.
@@ -3112,7 +3139,20 @@ function insertNodePoint(seg, fallbackX, fallbackY) {
     handleOut: { x: 0, y: 0 },
     handleType: 'auto',
   };
-  state.landmarks.push(lm);
+
+  if (state.activePreset && conn._originalGroup) {
+    const groupObj = conn._originalGroup;
+    groupObj.members.splice(seg.segIdx + 1, 0, name);
+  }
+
+  if (isTrace) {
+    state.landmarks.push(lm);
+  } else {
+    state.frames.forEach(frame => {
+      frame.landmarks.push(JSON.parse(JSON.stringify(lm)));
+    });
+  }
+
   state.nodeSelectedId = id;
   renderAll();
 }
@@ -3539,6 +3579,22 @@ function selectLandmark(id) {
 
 function renameLandmark(id, newName) {
   if (!newName) return;
+  const activeFrame = state.frames[state.activeFrameIdx];
+  const lmToRename = activeFrame && activeFrame.landmarks.find(l => l.id === id);
+  if (lmToRename) {
+    const oldName = lmToRename.name;
+    if (state.activePreset && state.presets[state.activePreset]) {
+      const preset = state.presets[state.activePreset];
+      if (preset.groups) {
+        preset.groups.forEach(group => {
+          if (group.members) {
+            group.members = group.members.map(m => m === oldName ? newName : m);
+          }
+        });
+      }
+    }
+  }
+
   state.frames.forEach(frame => {
     const lm = frame.landmarks.find(l => l.id === id);
     if (lm) lm.name = newName;
@@ -4100,12 +4156,19 @@ function onMouseMove(e) {
   if (state.eraserActive) {
     updateEraserCursorPos(e.clientX, e.clientY);
   }
-  // Curve mode: move the dragged landmark on all frames
+  // Curve mode: move the dragged landmark on the active frame only, with optional grid snap
   if (state.curveMode && state.curveDragId != null) {
     const p = screenToImage(e.clientX, e.clientY);
-    for (const frame of state.frames) {
-      const lm = frame.landmarks.find(l => l.id === state.curveDragId);
-      if (lm) { lm.x = p.x; lm.y = p.y; }
+    const frame = state.frames[state.activeFrameIdx];
+    const lm = frame && frame.landmarks.find(l => l.id === state.curveDragId);
+    if (lm) {
+      lm.x = p.x;
+      lm.y = p.y;
+      if (state.snapToGrid && state.pxPerCm) {
+        const gridPx = state.pxPerCm * state.gridSpacing;
+        lm.x = Math.round(lm.x / gridPx) * gridPx;
+        lm.y = Math.round(lm.y / gridPx) * gridPx;
+      }
     }
     render();
     return;
@@ -4134,6 +4197,11 @@ function onMouseMove(e) {
     if (lm) {
       lm.x = p.x - dragState.offsetX;
       lm.y = p.y - dragState.offsetY;
+      if (state.snapToGrid && state.pxPerCm) {
+        const gridPx = state.pxPerCm * state.gridSpacing;
+        lm.x = Math.round(lm.x / gridPx) * gridPx;
+        lm.y = Math.round(lm.y / gridPx) * gridPx;
+      }
     }
     render();
     renderList();
