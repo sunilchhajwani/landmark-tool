@@ -574,6 +574,7 @@
             <option value="80">80 px (very sparse)</option>
           </select>
         </div>
+        <label class="toggle-row" style="margin-top:6px" title="When ON, releasing and re-mousing-down continues the trace from the last placed point (joined at that point, no duplicate). When OFF, each stroke is a separate trace batch that starts at your click."><input type="checkbox" id="traceResumeCb"> Auto-resume trace from last point <span style="color:#5a5a62;font-size:10px">(R)</span></label>
         <div class="row" style="margin-top:6px">
           <label>Snap mode</label>
           <select id="traceSnapModeSel">
@@ -858,6 +859,7 @@ const state = {
   // brief flag the beginTrace path uses to show a "Resumed from X" status.
   traceResumeFrom: null,   // {x, y, name} last placed point from the previous stroke
   traceResuming: false,    // true during the very first mousemove after a resume
+  traceResumeEnabled: false, // user opt-in: ON = next mousedown continues from traceResumeFrom, OFF = starts a new batch
   traceSnapMode: 'off',    // 'off' (exact path, no snap — default), 'path' (perpendicular strip), or 'radius' (circular)
   traceSnapWidth: 25,      // half-width of the perpendicular strip (px) for path-snap mode
   traceLabelMode: 'off',   // 'off' (dots only, no labels — default), 'on' (full name), or 'numbered' (1, 2, 3…)
@@ -1223,6 +1225,12 @@ function bindUI() {
   $('traceIntervalSel').onchange = (e) => {
     state.traceInterval = parseInt(e.target.value) || 20;
   };
+  // Auto-resume toggle: when ON, releasing and re-mousing-down continues
+  // the trace from the last placed point. Default OFF so traces don't
+  // accidentally join across pen-lifts. The R key also toggles this.
+  $('traceResumeCb').onchange = (e) => {
+    setTraceResumeEnabled(e.target.checked);
+  };
   $('traceSnapModeSel').onchange = (e) => {
     state.traceSnapMode = e.target.value;
   };
@@ -1270,6 +1278,9 @@ function bindUI() {
   updateUndoButton();
   // Initialize blank-canvas bg swatch active-state to match the default.
   updateBlankBgSwatches();
+  // Sync the trace-resume checkbox (default unchecked, matching state).
+  const cb = $('traceResumeCb');
+  if (cb) cb.checked = !!state.traceResumeEnabled;
 }
 
 function setMode(m) {
@@ -1418,6 +1429,21 @@ function updateBlankBgSwatches() {
     btn.classList.toggle('active',
       (btn.dataset.bg || '').toLowerCase() === (state.blankBgColor || '').toLowerCase());
   });
+}
+
+// Toggle the trace auto-resume feature. Updates both state and the sidebar
+// checkbox, and gives the user a status line so they know the new setting.
+function setTraceResumeEnabled(enabled) {
+  state.traceResumeEnabled = !!enabled;
+  const cb = $('traceResumeCb');
+  if (cb && cb.checked !== state.traceResumeEnabled) cb.checked = state.traceResumeEnabled;
+  if (state.traceResumeEnabled && state.traceResumeFrom) {
+    setStatus(`Auto-resume ON — next mouse-down will continue from ${state.traceResumeFrom.name}.`, 'warn');
+  } else if (state.traceResumeEnabled) {
+    setStatus('Auto-resume ON — next mouse-down after a stroke will continue from its end.', 'warn');
+  } else {
+    setStatus('Auto-resume OFF — each mouse-down starts a new trace batch.', '');
+  }
 }
 
 function refreshFramesUI() {
@@ -2676,9 +2702,11 @@ function setTraceActive(active) {
   if (active) {
     const modeDesc = state.traceSnapMode === 'off' ? 'exact path (no snap)' :
                      state.traceSnapMode === 'path' ? 'path strip snap' : 'radius snap';
-    // If we have a resume point from a previous stroke, mention it so the
-    // user knows that mousing down will pick up from there, not start fresh.
-    const resumeNote = state.traceResumeFrom
+    // If we have a resume point AND the user has opted in to auto-resume,
+    // mention it so the user knows that mousing down will pick up from
+    // there, not start fresh. With the toggle OFF (default), the next
+    // mousedown starts a new batch and we don't tease the resume option.
+    const resumeNote = (state.traceResumeFrom && state.traceResumeEnabled)
       ? ` Click and drag to continue from ${state.traceResumeFrom.name}.`
       : '';
     setStatus(`Trace mode ON (${modeDesc}) — click and drag to drop points along a structure.${resumeNote}`, 'warn');
@@ -3178,15 +3206,18 @@ function beginTrace(x, y) {
   state.tracePoints = [];
   state.traceLastPoint = null;
 
-  // Resume from the previous stroke's last point if available. The new
-  // stroke's first NEW point gets the next sequential name (e.g. trace_006
-  // after a stroke ending at trace_005), and the curve joins at trace_005
+  // Resume from the previous stroke's last point only when the user has
+  // opted in via the 'Auto-resume trace from last point' toggle (or the
+  // R shortcut). Default is OFF so each mousedown starts a fresh batch
+  // and traces don't accidentally join across pen-lifts. The new stroke's
+  // first NEW point gets the next sequential name (e.g. trace_006 after
+  // a stroke ending at trace_005), and the curve joins at trace_005
   // exactly — no duplicate landmark is created at the join. The user's
   // click position (x, y) is added to the preview so the live polyline
   // shows the bridge from the resume point to the click; traceLastPoint
   // is set to the resume location so the first continueTrace call uses
   // the right baseline for the interval check.
-  if (state.traceResumeFrom) {
+  if (state.traceResumeFrom && state.traceResumeEnabled) {
     const r = state.traceResumeFrom;
     state.tracePreview.push({ x: r.x, y: r.y });
     state.tracePreview.push({ x, y });
@@ -3238,7 +3269,12 @@ function endTrace() {
   // placement).
   const lastPlaced = state.traceLastBatch[state.traceLastBatch.length - 1];
   state.traceResumeFrom = { x: lastPlaced.x, y: lastPlaced.y, name: lastPlaced.name };
-  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all, or mouse down again to continue from ${lastPlaced.name}.`, 'warn');
+  // Mention the resume option only when the toggle is on; otherwise the
+  // next mousedown will start a new batch, not a continuation.
+  const resumeNote = state.traceResumeEnabled
+    ? `, or toggle Auto-resume and mouse down again to continue from ${lastPlaced.name}`
+    : '';
+  setStatus(`Trace placed ${count} point${count === 1 ? '' : 's'}. Click ↶ Undo to remove them all${resumeNote}.`, 'warn');
   state.tracePoints = [];
   state.tracePreview = [];
   state.traceLastPoint = null;
@@ -4204,6 +4240,13 @@ function onKey(e) {
       undoLastTrace();
       e.preventDefault();
     }
+  }
+  // R: toggle auto-resume (only when not typing in an input/select)
+  if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey
+      && document.activeElement.tagName !== 'INPUT'
+      && document.activeElement.tagName !== 'SELECT') {
+    setTraceResumeEnabled(!state.traceResumeEnabled);
+    e.preventDefault();
   }
 }
 
